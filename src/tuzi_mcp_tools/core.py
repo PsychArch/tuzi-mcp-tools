@@ -12,11 +12,14 @@ import time
 import re
 import logging
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.markdown import Markdown
+from rich.live import Live
 
 # Configure logging to stderr for MCP server compatibility
 logging.basicConfig(
@@ -453,6 +456,383 @@ class TuZiImageGenerator:
                 progress.stop()
         
         return downloaded_files
+
+
+class TuZiSurvey:
+    """Survey class for conducting queries using Tu-zi.com's o3-all model with web search capabilities"""
+    
+    def __init__(self, api_key: str, console: Optional[Console] = None, show_thinking: bool = False):
+        """
+        Initialize the TuZi Survey
+        
+        Args:
+            api_key: Tu-zi.com API key
+            console: Rich console for output (optional)
+            show_thinking: Whether to display the thinking process (default: False)
+        """
+        self.api_key = api_key
+        self.api_url = "https://api.tu-zi.com/v1/chat/completions"
+        self.console = console or Console()
+        self.show_thinking = show_thinking
+    
+    def survey(
+        self, 
+        prompt: str,
+        stream: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Conduct a survey/query using Tu-zi.com's o3-all model with web search capabilities
+        
+        Args:
+            prompt: The natural language query/question
+            stream: Whether to use streaming response
+            
+        Returns:
+            Dictionary containing the API response
+        """
+        
+        # Log survey start to stderr
+        logger.info(f"Starting survey with o3-all model: {prompt[:100]}...")
+        
+        # Display in console if available (CLI mode)
+        if self.console:
+            self.console.print(f"[bold cyan]🔍 Surveying with o3-all model...[/bold cyan]")
+        
+        data = {
+            "model": "o3-all",
+            "stream": stream,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            if stream:
+                # For streaming response
+                with requests.post(
+                    self.api_url, 
+                    json=data, 
+                    headers=headers, 
+                    timeout=300,  # 5 minutes timeout
+                    stream=True
+                ) as response:
+                    
+                    if response.status_code != 200:
+                        raise Exception(f"API Error: {response.status_code} - {response.text}")
+                    
+                    # Process the streaming response
+                    result = self._process_survey_stream(response)
+                    
+                    # Log success to stderr
+                    logger.info("Survey completed successfully")
+                    
+                    # Display in console if available (CLI mode)
+                    if self.console:
+                        self.console.print(f"[green]✅ Survey completed[/green]")
+                    return result
+            else:
+                # For non-streaming response
+                response = requests.post(
+                    self.api_url, 
+                    json=data, 
+                    headers=headers, 
+                    timeout=300  # 5 minutes timeout
+                )
+                
+                if response.status_code != 200:
+                    raise Exception(f"API Error: {response.status_code} - {response.text}")
+                
+                result = response.json()
+                
+                if "error" in result:
+                    raise Exception(f"API Error: {result['error']['message']}")
+                
+                # Log success to stderr
+                logger.info("Survey completed successfully")
+                
+                # Display in console if available (CLI mode)
+                if self.console:
+                    self.console.print(f"[green]✅ Survey completed[/green]")
+                return result
+                
+        except Exception as e:
+            # Log error to stderr
+            logger.error(f"Survey failed: {e}")
+            
+            # Display error in console if available (CLI mode)
+            if self.console:
+                self.console.print(f"[bold red]❌ Survey failed:[/bold red] {e}")
+            raise e
+    
+    def _process_survey_stream(self, response) -> Dict[str, Any]:
+        """Process streaming response from Tu-zi.com API for survey with time-based markdown rendering"""
+        # Log processing start to stderr
+        logger.info("Processing survey stream response")
+        
+        full_content = ""
+        result = {}
+        thinking_complete = False
+        thinking_time_shown = False
+        markdown_content = ""
+        
+        # For CLI mode with console, use Live rendering for markdown
+        if self.console:
+            if self.show_thinking:
+                self.console.print("\n[bold cyan]🤔 Thinking and searching...[/bold cyan]\n")
+                return self._process_with_live_markdown(response)
+            else:
+                self.console.print("\n[bold cyan]🤔 Thinking...[/bold cyan]")
+        
+        try:
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                    
+                # Remove 'data: ' prefix if present
+                if line.startswith(b'data: '):
+                    line = line[6:]
+                
+                # Skip keep-alive lines
+                if line == b'[DONE]':
+                    break
+                    
+                try:
+                    data = json.loads(line)
+                    
+                    # Extract content
+                    if "choices" in data and len(data["choices"]) > 0:
+                        delta = data["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        
+                        if content:
+                            full_content += content
+                            
+                            # Display streaming content in console if available
+                            if self.console:
+                                # Only show busy indicators and final answer when thinking is disabled
+                                import re
+                                
+                                # Check if we hit the thinking completion marker
+                                thought_pattern = r'\*Thought for [^*]+\*'
+                                match = re.search(thought_pattern, content)
+                                
+                                if match and not thinking_time_shown:
+                                    # Show the thinking time and start showing content after
+                                    thinking_time_shown = True
+                                    thinking_complete = True
+                                    thinking_text = match.group(0)
+                                    
+                                    # Clear the "Thinking..." line and show thinking time
+                                    self.console.print(f"\r> {thinking_text}")
+                                    
+                                    # Start markdown content after thinking marker
+                                    after_thinking = content[match.end():].strip()
+                                    markdown_content = after_thinking  # Even if empty, start the live markdown
+                                    return self._process_remaining_with_live_markdown(response, markdown_content, data)
+                                elif thinking_complete:
+                                    # We should not reach here as we return above
+                                    pass
+                                # During thinking phase, only show dots as busy indicator occasionally
+                                elif len(full_content) % 50 == 0:  # Show dots every 50 characters
+                                    self.console.print(".", end="")
+                    
+                    # Store the last received data as the result
+                    result = data
+                    
+                except json.JSONDecodeError:
+                    pass
+                    
+        except Exception as e:
+            # Log error to stderr
+            logger.error(f"Error processing survey stream: {e}")
+            
+            # Display error in console if available
+            if self.console:
+                self.console.print(f"\n[bold red]Error processing stream:[/bold red] {e}")
+        
+        # Display completion in console if available
+        if self.console:
+            self.console.print("\n\n[bold green]✅ Survey response complete[/bold green]\n")
+                
+        return {
+            "result": result,
+            "content": full_content
+        }
+    
+    def _process_with_live_markdown(self, response) -> Dict[str, Any]:
+        """Process stream with live markdown rendering when show_thinking is True"""
+        full_content = ""
+        result = {}
+        
+        try:
+            with Live(Markdown(""), console=self.console, refresh_per_second=2) as live:
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                        
+                    # Remove 'data: ' prefix if present
+                    if line.startswith(b'data: '):
+                        line = line[6:]
+                    
+                    # Skip keep-alive lines
+                    if line == b'[DONE]':
+                        break
+                        
+                    try:
+                        data = json.loads(line)
+                        
+                        # Extract content
+                        if "choices" in data and len(data["choices"]) > 0:
+                            delta = data["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            
+                            if content:
+                                full_content += content
+                                # Update live markdown display
+                                try:
+                                    live.update(Markdown(full_content))
+                                except Exception:
+                                    # Fallback to plain text if markdown fails
+                                    live.update(full_content)
+                        
+                        # Store the last received data as the result
+                        result = data
+                        
+                    except json.JSONDecodeError:
+                        pass
+                        
+        except Exception as e:
+            # Log error to stderr
+            logger.error(f"Error processing survey stream: {e}")
+            
+            # Display error in console if available
+            if self.console:
+                self.console.print(f"\n[bold red]Error processing stream:[/bold red] {e}")
+        
+        # Display completion
+        if self.console:
+            self.console.print("\n[bold green]✅ Survey response complete[/bold green]\n")
+                
+        return {
+            "result": result,
+            "content": full_content
+        }
+    
+    def _process_remaining_with_live_markdown(self, response, initial_content: str, initial_result) -> Dict[str, Any]:
+        """Process remaining stream with live markdown after thinking is complete"""
+        full_content = initial_content
+        result = initial_result
+        
+        try:
+            # Start with empty or initial content
+            display_content = initial_content if initial_content.strip() else ""
+            with Live(Markdown(display_content) if display_content else "", console=self.console, refresh_per_second=2) as live:
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                        
+                    # Remove 'data: ' prefix if present
+                    if line.startswith(b'data: '):
+                        line = line[6:]
+                    
+                    # Skip keep-alive lines
+                    if line == b'[DONE]':
+                        break
+                        
+                    try:
+                        data = json.loads(line)
+                        
+                        # Extract content
+                        if "choices" in data and len(data["choices"]) > 0:
+                            delta = data["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            
+                            if content:
+                                full_content += content
+                                # Update live markdown display
+                                try:
+                                    live.update(Markdown(full_content))
+                                except Exception:
+                                    # Fallback to plain text if markdown fails
+                                    live.update(full_content)
+                        
+                        # Store the last received data as the result
+                        result = data
+                        
+                    except json.JSONDecodeError:
+                        pass
+                        
+        except Exception as e:
+            # Log error to stderr
+            logger.error(f"Error processing survey stream: {e}")
+            
+            # Display error in console if available
+            if self.console:
+                self.console.print(f"\n[bold red]Error processing stream:[/bold red] {e}")
+        
+        # Display completion
+        if self.console:
+            self.console.print("\n[bold green]✅ Survey response complete[/bold green]\n")
+                
+        return {
+            "result": result,
+            "content": full_content
+        }
+    
+    def extract_survey_content(self, result: Dict[str, Any]) -> str:
+        """Extract the content from survey API response"""
+        try:
+            if isinstance(result, dict) and "content" in result:
+                raw_content = result["content"]
+            elif "choices" in result and len(result["choices"]) > 0:
+                raw_content = result["choices"][0]["message"]["content"]
+            else:
+                return "No content found in response"
+            
+            # Parse thinking and final answer
+            return self._parse_response_content(raw_content)
+            
+        except Exception as e:
+            # Log error to stderr
+            logger.error(f"Error extracting survey content: {e}")
+            
+            # Display error in console if available
+            if self.console:
+                self.console.print(f"[bold red]Error extracting content:[/bold red] {e}")
+            return str(result)
+    
+    def _parse_response_content(self, content: str) -> str:
+        """Parse response content to separate thinking from final answer"""
+        if not self.show_thinking:
+            import re
+            
+            # The actual separator pattern from o3-all responses: "*Thought for X seconds*"
+            # This can be seconds, minutes and seconds (like "1m 29s"), etc.
+            thought_pattern = r'\*Thought for [^*]+\*'
+            
+            # Split content on the thinking separator
+            parts = re.split(thought_pattern, content, maxsplit=1)
+            
+            if len(parts) > 1:
+                # Found the separator, return content after it
+                final_answer = parts[1].strip()
+                if final_answer:
+                    return final_answer
+            
+            # If no separator found, return original content
+            # (No fallback assumptions - only use what we know exists)
+            return content
+        else:
+            # Return full content including thinking
+            return content
 
 
 

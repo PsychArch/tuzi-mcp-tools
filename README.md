@@ -1,11 +1,12 @@
 # Tuzi MCP Tools
 
-A Python package providing both **CLI** and **MCP server** interfaces for generating images using the Tu-zi.com API.
+A Python package providing both **CLI** and **MCP server** interfaces for generating images and conducting surveys using the Tu-zi.com API.
 
 ## Features
 
 - **Dual Interface**: CLI and MCP server
-- **Automatic Model Fallback**: Tries models from low to high price
+- **Image Generation**: Automatic model fallback system (tries models from low to high price)
+- **Survey/Query**: o3-all model with web search capabilities
 - **Multiple Formats**: PNG, JPEG, WebP with quality settings
 - **Real-time Progress**: Streaming generation with progress tracking
 
@@ -25,20 +26,35 @@ export TUZI_API_KEY='your_api_key_here'
 
 ## CLI Usage
 
-### Basic Commands
+### Image Generation
 
 ```bash
 # Generate image with automatic model selection
-tuzi "A beautiful sunset over mountains"
+tuzi image "A beautiful sunset over mountains"
 
 # High quality with custom options
-tuzi "A cute cat" --quality high --size 1024x1536 --format png
+tuzi image "A cute cat" --quality high --size 1024x1536 --format png
 
 # Transparent background
-tuzi "Company logo" --background transparent --output logo.png
+tuzi image "Company logo" --background transparent --output logo.png
+```
+
+### Survey/Query
+
+```bash
+# Ask a question with web search capabilities
+tuzi survey "What are the latest developments in AI?"
+
+# Get current information
+tuzi survey "What is the current weather in New York?"
+
+# Show the thinking process
+tuzi survey "Explain quantum computing" --show-thinking
 ```
 
 ### CLI Options
+
+#### Image Generation Options (`tuzi image`)
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -46,8 +62,18 @@ tuzi "Company logo" --background transparent --output logo.png
 | `--size` | Dimensions (1024x1024, 1536x1024, 1024x1536, auto) | `auto` |
 | `--format` | Output format (png, jpeg, webp) | `png` |
 | `--background` | Background (opaque, transparent) | `opaque` |
-| `--output` | Output file path | `images/generated_image.png` |
+| `--output` | Output file path | auto-generated |
 | `--compression` | Compression level 0-100 (JPEG/WebP) | `None` |
+| `--no-stream` | Disable streaming response | `False` |
+| `--verbose` | Show full API response | `False` |
+
+#### Survey Options (`tuzi survey`)
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--no-stream` | Disable streaming response | `False` |
+| `--verbose` | Show detailed response information | `False` |
+| `--show-thinking` | Show thinking process in addition to final answer | `False` |
 
 ## MCP Server Usage
 

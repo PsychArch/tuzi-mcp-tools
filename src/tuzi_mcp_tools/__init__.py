@@ -5,6 +5,6 @@ This package provides both command-line interface (CLI) and Model Context Protoc
 server implementations for generating images using the Tu-zi.com API.
 """
 
-from .core import TuZiImageGenerator
+from .core import TuZiImageGenerator, TuZiSurvey
 
-__all__ = ["TuZiImageGenerator"] 
+__all__ = ["TuZiImageGenerator", "TuZiSurvey"] 

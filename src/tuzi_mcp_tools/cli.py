@@ -17,6 +17,7 @@ from rich.markdown import Markdown
 
 from .core import (
     TuZiImageGenerator,
+    TuZiSurvey,
     get_api_key,
     validate_parameters,
     QUALITY_OPTIONS,
@@ -31,8 +32,24 @@ app = typer.Typer(help="Generate images using Tu-zi.com API with automatic model
 console = Console()
 
 
+def check_api_key() -> str:
+    """Check for API key and display error panel if missing"""
+    try:
+        return get_api_key()
+    except ValueError as e:
+        console.print(Panel.fit(
+            f"[bold red]❌ Error: {e}[/bold red]\n"
+            "Please set your Tu-zi.com API key:\n"
+            "[dim]export TUZI_API_KEY='your_api_key_here'[/dim]",
+            title="API Key Required",
+            border_style="red"
+        ))
+        raise typer.Exit(1)
+
+
+
 @app.command()
-def generate(
+def image(
     prompt: str = typer.Argument(..., help="The prompt for image generation"),
     quality: str = typer.Option("auto", "--quality", "-q", help="Image quality: low, medium, high, auto"),
     size: str = typer.Option("auto", "--size", "-s", help="Image size: 1024x1024, 1536x1024, 1024x1536, auto"),
@@ -53,17 +70,7 @@ def generate(
         raise typer.Exit(1)
     
     # Check for API key
-    try:
-        api_key = get_api_key()
-    except ValueError as e:
-        console.print(Panel.fit(
-            f"[bold red]❌ Error: {e}[/bold red]\n"
-            "Please set your Tu-zi.com API key:\n"
-            "[dim]export TUZI_API_KEY='your_api_key_here'[/dim]",
-            title="API Key Required",
-            border_style="red"
-        ))
-        raise typer.Exit(1)
+    api_key = check_api_key()
     
     # Initialize generator with console for rich output
     generator = TuZiImageGenerator(api_key, console=console)
@@ -158,16 +165,86 @@ def generate(
         
         # Display the response content in a panel only if verbose mode is enabled
         if verbose:
-            console.print(Panel(
-                Markdown(content),
+            console.print(Panel.fit(
+                "",  # Empty content, we'll render below
                 title="📝 Full Response",
-                border_style="blue",
-                expand=False
+                border_style="blue"
             ))
+            console.print(Markdown(content))
         
     except Exception as e:
         console.print(Panel(
             f"[bold red]❌ Failed to generate image:[/bold red] {str(e)}",
+            title="Error",
+            border_style="red"
+        ))
+        raise typer.Exit(1)
+
+
+@app.command()
+def survey(
+    prompt: str = typer.Argument(..., help="The query prompt for the survey"),
+    no_stream: bool = typer.Option(False, "--no-stream", help="Disable streaming response"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed response information"),
+    show_thinking: bool = typer.Option(False, "--show-thinking", help="Show the thinking process in addition to the final answer")
+):
+    """Conduct a survey/query using Tu-zi.com's o3-all model with web search capabilities"""
+    
+    # Check for API key
+    api_key = check_api_key()
+    
+    
+    # Initialize survey with console for rich output
+    survey_obj = TuZiSurvey(api_key, console=console, show_thinking=show_thinking)
+    
+    # Display survey info
+    info_lines = [
+        f"[bold]Query:[/bold] {prompt}",
+        f"[bold]Model:[/bold] o3-all (with web search)",
+        f"[bold]Streaming:[/bold] {'No' if no_stream else 'Yes'}",
+        f"[bold]Show Thinking:[/bold] {'Yes' if show_thinking else 'No (final answer only)'}"
+    ]
+    
+    console.print(Panel.fit(
+        "\n".join(info_lines),
+        title="🔍 Survey Query (o3-all with Web Search)",
+        border_style="cyan"
+    ))
+    
+    try:
+        # Conduct the survey
+        result = survey_obj.survey(
+            prompt=prompt,
+            stream=not no_stream
+        )
+        
+        # Extract and display the response
+        content = survey_obj.extract_survey_content(result)
+        
+        if verbose:
+            # Show usage information if available
+            if "result" in result and "usage" in result["result"]:
+                usage = result["result"]["usage"]
+                console.print(Panel(
+                    f"[dim]Tokens used: {usage.get('total_tokens', 'N/A')} "
+                    f"(prompt: {usage.get('prompt_tokens', 'N/A')}, "
+                    f"completion: {usage.get('completion_tokens', 'N/A')})[/dim]",
+                    title="📊 Usage Information",
+                    border_style="blue"
+                ))
+        
+        # Display the content in a markdown panel if not already displayed during streaming
+        if no_stream and content:
+            console.print(Panel.fit(
+                "",  # Empty content, we'll render below
+                title="📝 Survey Response",
+                border_style="green"
+            ))
+            console.print(Markdown(content))
+        
+    except Exception as e:
+        console.print(Panel(
+            f"[bold red]❌ Failed to conduct survey:[/bold red] {str(e)}",
             title="Error",
             border_style="red"
         ))

@@ -19,12 +19,13 @@ from pydantic import BaseModel, Field
 
 from .core import (
     TuZiImageGenerator,
+    TuZiSurvey,
     validate_parameters,
     get_api_key,
 )
 
 # Create the MCP server
-mcp = FastMCP("Tuzi Image Generator")
+mcp = FastMCP("Tuzi Tools - Image Generator and Survey")
 
 # Pydantic model for structured response
 class ImageGenerationResult(BaseModel):
@@ -35,6 +36,14 @@ class ImageGenerationResult(BaseModel):
     downloaded_file: str = Field(description="Path to the downloaded image file")
     model_used: str = Field(description="Model used for generation")
     generation_time: float = Field(description="Time taken for generation in seconds")
+
+
+class SurveyResult(BaseModel):
+    """Result of survey/query"""
+    success: bool = Field(description="Whether the survey was successful")
+    message: str = Field(description="Status message")
+    content: str = Field(description="The survey response content")
+    response_time: float = Field(description="Time taken for response in seconds")
 
 
 @mcp.tool()
@@ -144,6 +153,49 @@ def generate_image(
             downloaded_file="",
             model_used="none",
             generation_time=generation_time
+        )
+
+
+@mcp.tool()
+def survey(
+    prompt: Annotated[str, Field(description="The natural language query/question for the survey")],
+    show_thinking: Annotated[bool, Field(description="Whether to include the thinking process in the response (default: False)")] = False
+) -> SurveyResult:
+    """Survey/query a topic using LLM with web search capabilities"""
+    start_time = time.time()
+    
+    try:
+        # Get API key
+        api_key = get_api_key()
+        
+        # Initialize survey (without console output for MCP)
+        survey_obj = TuZiSurvey(api_key, console=None, show_thinking=show_thinking)
+        
+        # Conduct the survey
+        result = survey_obj.survey(
+            prompt=prompt,
+            stream=True
+        )
+        
+        # Extract response content
+        content = survey_obj.extract_survey_content(result)
+        
+        response_time = time.time() - start_time
+        
+        return SurveyResult(
+            success=True,
+            message="Survey completed successfully",
+            content=content,
+            response_time=response_time
+        )
+        
+    except Exception as e:
+        response_time = time.time() - start_time
+        return SurveyResult(
+            success=False,
+            message=f"Failed to conduct survey: {str(e)}",
+            content="",
+            response_time=response_time
         )
 
 
