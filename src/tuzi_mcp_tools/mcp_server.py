@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from .core import (
     TuZiImageGenerator,
     TuZiSurvey,
+    ConversationManager,
     validate_parameters,
     get_api_key,
     FLUX_ASPECT_RATIOS,
@@ -28,6 +29,9 @@ from .core import (
 
 # Create the MCP server
 mcp = FastMCP("Tuzi Tools - Image Generator and Survey")
+
+# Global conversation manager for MCP server (in-memory storage)
+conversation_manager = ConversationManager(storage_mode="memory")
 
 # Pydantic model for structured response
 class ImageGenerationResult(BaseModel):
@@ -38,6 +42,8 @@ class ImageGenerationResult(BaseModel):
     downloaded_file: str = Field(description="Path to the downloaded image file")
     model_used: str = Field(description="Model used for generation")
     generation_time: float = Field(description="Time taken for generation in seconds")
+    conversation_id: Optional[str] = Field(description="Conversation ID if used")
+    conversation_message_count: int = Field(description="Number of messages in conversation")
 
 
 class SurveyResult(BaseModel):
@@ -46,6 +52,8 @@ class SurveyResult(BaseModel):
     message: str = Field(description="Status message")
     content: str = Field(description="The survey response content")
     response_time: float = Field(description="Time taken for response in seconds")
+    conversation_id: Optional[str] = Field(description="Conversation ID if used")
+    conversation_message_count: int = Field(description="Number of messages in conversation")
 
 
 class FluxImageGenerationResult(BaseModel):
@@ -58,6 +66,8 @@ class FluxImageGenerationResult(BaseModel):
     seed_used: Optional[int] = Field(description="Seed used for generation (if provided)")
     aspect_ratio: str = Field(description="Aspect ratio used for generation")
     output_format: str = Field(description="Output format used for generation")
+    conversation_id: Optional[str] = Field(description="Conversation ID if used")
+    conversation_message_count: int = Field(description="Number of messages in conversation")
 
 
 @mcp.tool()
@@ -85,8 +95,16 @@ def generate_image(
     ] = None,
     output_path: Annotated[
         str, 
-        Field(description="Full path where to save the generated image")
-    ] = "images/generated_image.png"
+        Field(description="Absolute path where to save the generated image")
+    ] = "images/generated_image.png",
+    conversation_id: Annotated[
+        Optional[str], 
+        Field(description="Conversation ID for maintaining context across multiple requests")
+    ] = None,
+    close_conversation: Annotated[
+        bool, 
+        Field(description="Whether to close the conversation after this request")
+    ] = False
 ) -> ImageGenerationResult:
     """Generate an image from a prompt using Text-To-Image model"""
     start_time = time.time()
@@ -99,7 +117,7 @@ def generate_image(
         api_key = get_api_key()
         
         # Initialize generator (without console output for MCP)
-        generator = TuZiImageGenerator(api_key, console=None)
+        generator = TuZiImageGenerator(api_key, console=None, conversation_manager=conversation_manager)
         
         # Build parameters
         params = {}
@@ -118,6 +136,8 @@ def generate_image(
         result = generator.generate_image(
             prompt=prompt,
             stream=True,
+            conversation_id=conversation_id,
+            close_conversation=close_conversation,
             **params
         )
         
@@ -148,6 +168,7 @@ def generate_image(
         
         generation_time = time.time() - start_time
         model_used = result.get("model_used", "unknown")
+        conversation_info = result.get("conversation_info", {})
         
         return ImageGenerationResult(
             success=True,
@@ -155,7 +176,9 @@ def generate_image(
             image_url=first_image_url,
             downloaded_file=downloaded_file,
             model_used=model_used,
-            generation_time=generation_time
+            generation_time=generation_time,
+            conversation_id=conversation_info.get("conversation_id"),
+            conversation_message_count=conversation_info.get("message_count", 0)
         )
         
     except Exception as e:
@@ -166,7 +189,9 @@ def generate_image(
             image_url="",
             downloaded_file="",
             model_used="none",
-            generation_time=generation_time
+            generation_time=generation_time,
+            conversation_id=conversation_id,
+            conversation_message_count=0
         )
 
 
@@ -174,7 +199,15 @@ def generate_image(
 def survey(
     prompt: Annotated[str, Field(description="The natural language query/question for the survey")],
     show_thinking: Annotated[bool, Field(description="Whether to include the thinking process in the response (default: False)")] = False,
-    deep: Annotated[bool, Field(description="Deep analysis for complicated mathemetical or logical questions (default: False)")] = False
+    deep: Annotated[bool, Field(description="Deep analysis for complicated mathemetical or logical questions (default: False)")] = False,
+    conversation_id: Annotated[
+        Optional[str], 
+        Field(description="Conversation ID for maintaining context across multiple requests")
+    ] = None,
+    close_conversation: Annotated[
+        bool, 
+        Field(description="Whether to close the conversation without executing the request")
+    ] = False
 ) -> SurveyResult:
     """Survey/query a topic using LLM with web search capabilities"""
     start_time = time.time()
@@ -184,17 +217,20 @@ def survey(
         api_key = get_api_key()
         
         # Initialize survey (without console output for MCP)
-        survey_obj = TuZiSurvey(api_key, console=None, show_thinking=show_thinking)
+        survey_obj = TuZiSurvey(api_key, console=None, show_thinking=show_thinking, conversation_manager=conversation_manager)
         
         # Conduct the survey
         result = survey_obj.survey(
             prompt=prompt,
             stream=True,
-            deep=deep
+            deep=deep,
+            conversation_id=conversation_id,
+            close_conversation=close_conversation
         )
         
         # Extract response content
         content = survey_obj.extract_survey_content(result)
+        conversation_info = result.get("conversation_info", {})
         
         response_time = time.time() - start_time
         
@@ -202,7 +238,9 @@ def survey(
             success=True,
             message="Survey completed successfully",
             content=content,
-            response_time=response_time
+            response_time=response_time,
+            conversation_id=conversation_info.get("conversation_id"),
+            conversation_message_count=conversation_info.get("message_count", 0)
         )
         
     except Exception as e:
@@ -211,7 +249,9 @@ def survey(
             success=False,
             message=f"Failed to conduct survey: {str(e)}",
             content="",
-            response_time=response_time
+            response_time=response_time,
+            conversation_id=conversation_id,
+            conversation_message_count=0
         )
 
 
@@ -232,12 +272,20 @@ def generate_flux_image(
     ] = None,
     input_image_path: Annotated[
         Optional[str], 
-        Field(description="Path to reference image file (optional)")
+        Field(description="Absolute path to reference image file (optional)")
     ] = None,
     output_path: Annotated[
         str, 
-        Field(description="Full path where to save the generated image")
-    ] = "images/flux_generated_image.png"
+        Field(description="Absolute path where to save the generated image")
+    ] = "images/flux_generated_image.png",
+    conversation_id: Annotated[
+        Optional[str], 
+        Field(description="Conversation ID for maintaining context across multiple requests")
+    ] = None,
+    close_conversation: Annotated[
+        bool, 
+        Field(description="Whether to close the conversation without executing the request")
+    ] = False
 ) -> FluxImageGenerationResult:
     """Generate an image using FLUX model (flux-kontext-pro)"""
     start_time = time.time()
@@ -254,7 +302,7 @@ def generate_flux_image(
         api_key = get_api_key()
         
         # Initialize generator (without console output for MCP)
-        generator = TuZiImageGenerator(api_key, console=None)
+        generator = TuZiImageGenerator(api_key, console=None, conversation_manager=conversation_manager)
         
         # Handle input image if provided
         input_image_b64 = None
@@ -283,7 +331,9 @@ def generate_flux_image(
             input_image=input_image_b64,
             seed=seed,
             aspect_ratio=aspect_ratio,
-            output_format=output_format
+            output_format=output_format,
+            conversation_id=conversation_id,
+            close_conversation=close_conversation
         )
         
         # Extract image URLs using FLUX-specific method
@@ -309,6 +359,7 @@ def generate_flux_image(
         downloaded_file = downloaded_files[0] if downloaded_files else ""
         
         generation_time = time.time() - start_time
+        conversation_info = result.get("conversation_info", {})
         
         return FluxImageGenerationResult(
             success=True,
@@ -318,7 +369,9 @@ def generate_flux_image(
             generation_time=generation_time,
             seed_used=seed,
             aspect_ratio=aspect_ratio,
-            output_format=output_format
+            output_format=output_format,
+            conversation_id=conversation_info.get("conversation_id"),
+            conversation_message_count=conversation_info.get("message_count", 0)
         )
         
     except Exception as e:
@@ -331,7 +384,9 @@ def generate_flux_image(
             generation_time=generation_time,
             seed_used=seed,
             aspect_ratio=aspect_ratio,
-            output_format=output_format
+            output_format=output_format,
+            conversation_id=conversation_id,
+            conversation_message_count=0
         )
 
 

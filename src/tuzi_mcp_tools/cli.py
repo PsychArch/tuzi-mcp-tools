@@ -60,7 +60,9 @@ def image(
     compression: Optional[int] = typer.Option(None, "--compression", "-c", help="Output compression (0-100, for JPEG/WebP)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path (can be filename or full path)"),
     no_stream: bool = typer.Option(False, "--no-stream", help="Disable streaming response"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full API response")
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full API response"),
+    conversation_id: Optional[str] = typer.Option(None, "--conversation-id", help="Conversation ID to save/continue conversation history"),
+    close_conversation: bool = typer.Option(False, "--close-conversation", help="Close and erase the conversation without executing the request")
 ):
     """Generate an image using Tu-zi.com API with automatic model fallback"""
     
@@ -74,8 +76,12 @@ def image(
     # Check for API key
     api_key = check_api_key()
     
-    # Initialize generator with console for rich output
-    generator = TuZiImageGenerator(api_key, console=console)
+    # Initialize conversation manager for file-based storage
+    from .core import ConversationManager
+    conversation_manager = ConversationManager(storage_mode="file")
+    
+    # Initialize generator with console for rich output and conversation manager
+    generator = TuZiImageGenerator(api_key, console=console, conversation_manager=conversation_manager)
     
     # Build parameters
     params = {}
@@ -131,6 +137,8 @@ def image(
         result = generator.generate_image(
             prompt=prompt,
             stream=not no_stream,
+            conversation_id=conversation_id,
+            close_conversation=close_conversation,
             **params
         )
         
@@ -189,16 +197,21 @@ def survey(
     no_stream: bool = typer.Option(False, "--no-stream", help="Disable streaming response"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed response information"),
     show_thinking: bool = typer.Option(False, "--show-thinking", help="Show the thinking process in addition to the final answer"),
-    deep: bool = typer.Option(False, "--deep", help="Use o3-pro for deeper analysis (default: o3-all)")
+    deep: bool = typer.Option(False, "--deep", help="Use o3-pro for deeper analysis (default: o3-all)"),
+    conversation_id: Optional[str] = typer.Option(None, "--conversation-id", help="Conversation ID to save/continue conversation history"),
+    close_conversation: bool = typer.Option(False, "--close-conversation", help="Close and erase the conversation without executing the request")
 ):
     """Conduct a survey/query using Tu-zi.com's model with web search capabilities"""
     
     # Check for API key
     api_key = check_api_key()
     
+    # Initialize conversation manager for file-based storage
+    from .core import ConversationManager
+    conversation_manager = ConversationManager(storage_mode="file")
     
-    # Initialize survey with console for rich output
-    survey_obj = TuZiSurvey(api_key, console=console, show_thinking=show_thinking)
+    # Initialize survey with console for rich output and conversation manager
+    survey_obj = TuZiSurvey(api_key, console=console, show_thinking=show_thinking, conversation_manager=conversation_manager)
     
     # Display survey info
     model_name = "o3-pro" if deep else "o3-all"
@@ -225,7 +238,9 @@ def survey(
         result = survey_obj.survey(
             prompt=prompt,
             stream=not no_stream,
-            deep=deep
+            deep=deep,
+            conversation_id=conversation_id,
+            close_conversation=close_conversation
         )
         
         # Extract and display the response
@@ -269,7 +284,9 @@ def flux(
     seed: Optional[int] = typer.Option(None, "--seed", "-s", help="Reproducible generation seed"),
     input_image: Optional[str] = typer.Option(None, "--input-image", "-i", help="Path to reference image file"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path (can be filename or full path)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full API response")
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full API response"),
+    conversation_id: Optional[str] = typer.Option(None, "--conversation-id", help="Conversation ID to save/continue conversation history"),
+    close_conversation: bool = typer.Option(False, "--close-conversation", help="Close and erase the conversation after generation")
 ):
     """Generate an image using Tu-zi.com FLUX API (flux-kontext-pro model)"""
     
@@ -285,8 +302,12 @@ def flux(
     # Check for API key
     api_key = check_api_key()
     
-    # Initialize generator with console for rich output
-    generator = TuZiImageGenerator(api_key, console=console)
+    # Initialize conversation manager for file-based storage
+    from .core import ConversationManager
+    conversation_manager = ConversationManager(storage_mode="file")
+    
+    # Initialize generator with console for rich output and conversation manager
+    generator = TuZiImageGenerator(api_key, console=console, conversation_manager=conversation_manager)
     
     # Handle input image if provided
     input_image_b64 = None
@@ -353,7 +374,9 @@ def flux(
             input_image=input_image_b64,
             seed=seed,
             aspect_ratio=aspect_ratio,
-            output_format=output_format
+            output_format=output_format,
+            conversation_id=conversation_id,
+            close_conversation=close_conversation
         )
         
         # Extract image URLs using FLUX-specific method

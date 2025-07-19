@@ -115,8 +115,9 @@ tuzi survey "Analyze the implications of quantum computing on cryptography" --de
 ```json
 {
   "mcpServers": {
-    "tuzi-image-generator": {
-      "command": "tuzi-mcp",
+    "tuzi": {
+      "command": "uvx",
+      "args": ["tuzi-mcp-tools"],
       "env": {
         "TUZI_API_KEY": "your_api_key_here"
       }

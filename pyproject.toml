@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tuzi-mcp-tools"
-version = "0.1.0"
-description = "Tuzi Image Generator - CLI and MCP tool interfaces for Tu-zi.com API"
+version = "0.2.0"
+description = "Tuzi - CLI and MCP tool interfaces for Tu-zi.com API"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Tuzi Tools", email = "contact@example.com"},
+    {name = "Tuzi Tools", email = "psycharch@github.com"},
 ]
 keywords = ["mcp", "cli", "image-generation", "tuzi", "ai"]
 classifiers = [
@@ -36,7 +36,7 @@ dependencies = [
 
 [project.scripts]
 tuzi = "tuzi_mcp_tools.cli:main"
-tuzi-mcp = "tuzi_mcp_tools.mcp_server:main"
+tuzi-mcp-tools = "tuzi_mcp_tools.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/example/tuzi-mcp-tools"
