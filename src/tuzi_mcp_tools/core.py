@@ -313,6 +313,7 @@ class TuZiImageGenerator:
         stream: bool = True,
         conversation_id: Optional[str] = None,
         close_conversation: bool = False,
+        input_image: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -323,6 +324,7 @@ class TuZiImageGenerator:
             stream: Whether to use streaming response
             conversation_id: Optional conversation ID for maintaining history
             close_conversation: Whether to close/erase the conversation after generation
+            input_image: Base64 encoded reference image (optional)
             **kwargs: Additional parameters (quality, size, format, etc.)
             
         Returns:
@@ -364,30 +366,68 @@ class TuZiImageGenerator:
                 # Continue without history
         
         # Build the current message content with image generation parameters
-        content = prompt
-        
-        # Add image generation parameters if provided
-        if any(k in kwargs for k in ['quality', 'size', 'format', 'background', 'output_compression']):
-            params = []
-            if 'quality' in kwargs and kwargs['quality'] != 'auto':
-                params.append(f"quality: {kwargs['quality']}")
-            if 'size' in kwargs and kwargs['size'] != 'auto':
-                params.append(f"size: {kwargs['size']}")
-            if 'format' in kwargs and kwargs['format'] != 'png':
-                params.append(f"format: {kwargs['format']}")
-            if 'background' in kwargs and kwargs['background'] == 'transparent':
-                params.append("background: transparent")
-            if 'output_compression' in kwargs:
-                params.append(f"compression: {kwargs['output_compression']}")
+        if input_image:
+            # Use multimodal format with image and text
+            content_parts = [
+                {"type": "text", "text": prompt}
+            ]
             
-            if params:
-                content += f"\n\nImage parameters: {', '.join(params)}"
-        
-        # Add current user message to the conversation
-        messages.append({
-            "role": "user",
-            "content": content
-        })
+            # Add image generation parameters if provided
+            if any(k in kwargs for k in ['quality', 'size', 'format', 'background', 'output_compression']):
+                params = []
+                if 'quality' in kwargs and kwargs['quality'] != 'auto':
+                    params.append(f"quality: {kwargs['quality']}")
+                if 'size' in kwargs and kwargs['size'] != 'auto':
+                    params.append(f"size: {kwargs['size']}")
+                if 'format' in kwargs and kwargs['format'] != 'png':
+                    params.append(f"format: {kwargs['format']}")
+                if 'background' in kwargs and kwargs['background'] == 'transparent':
+                    params.append("background: transparent")
+                if 'output_compression' in kwargs:
+                    params.append(f"compression: {kwargs['output_compression']}")
+                
+                if params:
+                    content_parts[0]["text"] += f"\n\nImage parameters: {', '.join(params)}"
+            
+            # Add the input image
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": input_image
+                }
+            })
+            
+            # Add current user message to the conversation
+            messages.append({
+                "role": "user",
+                "content": content_parts
+            })
+        else:
+            # Use text-only format
+            content = prompt
+            
+            # Add image generation parameters if provided
+            if any(k in kwargs for k in ['quality', 'size', 'format', 'background', 'output_compression']):
+                params = []
+                if 'quality' in kwargs and kwargs['quality'] != 'auto':
+                    params.append(f"quality: {kwargs['quality']}")
+                if 'size' in kwargs and kwargs['size'] != 'auto':
+                    params.append(f"size: {kwargs['size']}")
+                if 'format' in kwargs and kwargs['format'] != 'png':
+                    params.append(f"format: {kwargs['format']}")
+                if 'background' in kwargs and kwargs['background'] == 'transparent':
+                    params.append("background: transparent")
+                if 'output_compression' in kwargs:
+                    params.append(f"compression: {kwargs['output_compression']}")
+                
+                if params:
+                    content += f"\n\nImage parameters: {', '.join(params)}"
+            
+            # Add current user message to the conversation
+            messages.append({
+                "role": "user",
+                "content": content
+            })
         
         # Try models in order from lowest to highest price
         last_exception = None

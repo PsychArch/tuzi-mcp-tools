@@ -50,8 +50,8 @@ def check_api_key() -> str:
 
 
 
-@app.command()
-def image(
+@app.command(name="gpt-image")
+def gpt_image(
     prompt: str = typer.Argument(..., help="The prompt for image generation"),
     quality: str = typer.Option("auto", "--quality", "-q", help="Image quality: low, medium, high, auto"),
     size: str = typer.Option("auto", "--size", "-s", help="Image size: 1024x1024, 1536x1024, 1024x1536, auto"),
@@ -59,12 +59,13 @@ def image(
     background: str = typer.Option("opaque", "--background", "-bg", help="Background: transparent, opaque"),
     compression: Optional[int] = typer.Option(None, "--compression", "-c", help="Output compression (0-100, for JPEG/WebP)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path (can be filename or full path)"),
+    input_image: Optional[str] = typer.Option(None, "--input-image", "-i", help="Path to reference image file"),
     no_stream: bool = typer.Option(False, "--no-stream", help="Disable streaming response"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show full API response"),
     conversation_id: Optional[str] = typer.Option(None, "--conversation-id", help="Conversation ID to save/continue conversation history"),
     close_conversation: bool = typer.Option(False, "--close-conversation", help="Close and erase the conversation without executing the request")
 ):
-    """Generate an image using Tu-zi.com API with automatic model fallback"""
+    """Generate an image using GPT-based image generation"""
     
     # Validate parameters
     try:
@@ -82,6 +83,28 @@ def image(
     
     # Initialize generator with console for rich output and conversation manager
     generator = TuZiImageGenerator(api_key, console=console, conversation_manager=conversation_manager)
+    
+    # Handle input image if provided
+    input_image_b64 = None
+    if input_image:
+        try:
+            import base64
+            with open(input_image, 'rb') as f:
+                image_data = f.read()
+                input_image_b64 = base64.b64encode(image_data).decode('utf-8')
+                
+                ext = Path(input_image).suffix.lower()
+                if ext in ['.jpg', '.jpeg']:
+                    input_image_b64 = f"data:image/jpeg;base64,{input_image_b64}"
+                elif ext == '.png':
+                    input_image_b64 = f"data:image/png;base64,{input_image_b64}"
+                elif ext == '.webp':
+                    input_image_b64 = f"data:image/webp;base64,{input_image_b64}"
+                else:
+                    input_image_b64 = f"data:image/png;base64,{input_image_b64}"  # Default to PNG
+        except Exception as e:
+            console.print(f"[red]❌ Failed to read input image: {e}[/red]")
+            raise typer.Exit(1)
     
     # Build parameters
     params = {}
@@ -120,15 +143,18 @@ def image(
         f"[bold]Format:[/bold] {format}",
         f"[bold]Background:[/bold] {background}",
         f"[bold]Output:[/bold] {output or 'auto-generated filename'}",
-        f"[bold]Model Fallback Order:[/bold] {' → '.join(MODEL_FALLBACK_ORDER)}"
+        f"[bold]Generation Mode:[/bold] Intelligent model selection"
     ]
+    
+    if input_image:
+        info_lines.append(f"[bold]Input Image:[/bold] {input_image}")
     
     if compression is not None:
         info_lines.append(f"[bold]Compression:[/bold] {compression}%")
     
     console.print(Panel.fit(
         "\n".join(info_lines),
-        title="🎨 Image Generation (Automatic Model Fallback)",
+        title="🎨 GPT Image Generation",
         border_style="cyan"
     ))
     
@@ -139,6 +165,7 @@ def image(
             stream=not no_stream,
             conversation_id=conversation_id,
             close_conversation=close_conversation,
+            input_image=input_image_b64,
             **params
         )
         
@@ -276,8 +303,8 @@ def survey(
         raise typer.Exit(1)
 
 
-@app.command()
-def flux(
+@app.command(name="flux-image")
+def flux_image(
     prompt: str = typer.Argument(..., help="The prompt for FLUX image generation"),
     aspect_ratio: str = typer.Option("1:1", "--aspect-ratio", "-ar", help="Image aspect ratio: 1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21"),
     output_format: str = typer.Option("png", "--format", "-f", help="Output format: png, jpg, jpeg, webp"),
@@ -288,7 +315,7 @@ def flux(
     conversation_id: Optional[str] = typer.Option(None, "--conversation-id", help="Conversation ID to save/continue conversation history"),
     close_conversation: bool = typer.Option(False, "--close-conversation", help="Close and erase the conversation after generation")
 ):
-    """Generate an image using Tu-zi.com FLUX API (flux-kontext-pro model)"""
+    """Generate an image using FLUX for premium quality"""
     
     # Validate parameters
     if aspect_ratio not in FLUX_ASPECT_RATIOS:
@@ -350,7 +377,7 @@ def flux(
     # Display generation info
     info_lines = [
         f"[bold]Prompt:[/bold] {prompt}",
-        f"[bold]Model:[/bold] flux-kontext-pro",
+        f"[bold]Generation Mode:[/bold] FLUX Premium Quality",
         f"[bold]Aspect Ratio:[/bold] {aspect_ratio}",
         f"[bold]Format:[/bold] {output_format}",
         f"[bold]Output:[/bold] {output or 'auto-generated filename'}"

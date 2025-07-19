@@ -71,7 +71,7 @@ class FluxImageGenerationResult(BaseModel):
 
 
 @mcp.tool()
-def generate_image(
+def gpt_image(
     prompt: Annotated[str, Field(description="The text prompt for image generation")],
     quality: Annotated[
         Literal["auto", "low", "medium", "high"], 
@@ -97,6 +97,10 @@ def generate_image(
         str, 
         Field(description="Absolute path where to save the generated image")
     ] = "images/generated_image.png",
+    input_image_path: Annotated[
+        Optional[str], 
+        Field(description="Absolute path to reference image file (optional)")
+    ] = None,
     conversation_id: Annotated[
         Optional[str], 
         Field(description="Conversation ID for maintaining context across multiple requests")
@@ -106,7 +110,7 @@ def generate_image(
         Field(description="Whether to close the conversation after this request")
     ] = False
 ) -> ImageGenerationResult:
-    """Generate an image from a prompt using Text-To-Image model"""
+    """Generate an image from a prompt using GPT-based image generation with optional reference image"""
     start_time = time.time()
     
     try:
@@ -115,6 +119,27 @@ def generate_image(
         
         # Get API key
         api_key = get_api_key()
+        
+        # Handle input image if provided
+        input_image_b64 = None
+        if input_image_path:
+            try:
+                import base64
+                with open(input_image_path, 'rb') as f:
+                    image_data = f.read()
+                    input_image_b64 = base64.b64encode(image_data).decode('utf-8')
+                    
+                    ext = os.path.splitext(input_image_path)[1].lower()
+                    if ext in ['.jpg', '.jpeg']:
+                        input_image_b64 = f"data:image/jpeg;base64,{input_image_b64}"
+                    elif ext == '.png':
+                        input_image_b64 = f"data:image/png;base64,{input_image_b64}"
+                    elif ext == '.webp':
+                        input_image_b64 = f"data:image/webp;base64,{input_image_b64}"
+                    else:
+                        input_image_b64 = f"data:image/png;base64,{input_image_b64}"  # Default to PNG
+            except Exception as e:
+                raise Exception(f"Failed to read input image: {e}")
         
         # Initialize generator (without console output for MCP)
         generator = TuZiImageGenerator(api_key, console=None, conversation_manager=conversation_manager)
@@ -138,6 +163,7 @@ def generate_image(
             stream=True,
             conversation_id=conversation_id,
             close_conversation=close_conversation,
+            input_image=input_image_b64,
             **params
         )
         
@@ -256,7 +282,7 @@ def survey(
 
 
 @mcp.tool()
-def generate_flux_image(
+def flux_image(
     prompt: Annotated[str, Field(description="The text prompt for FLUX image generation")],
     aspect_ratio: Annotated[
         str, 
@@ -287,7 +313,7 @@ def generate_flux_image(
         Field(description="Whether to close the conversation without executing the request")
     ] = False
 ) -> FluxImageGenerationResult:
-    """Generate an image using FLUX model (flux-kontext-pro)"""
+    """Generate an image using FLUX model for premium quality"""
     start_time = time.time()
     
     try:
