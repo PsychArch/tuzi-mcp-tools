@@ -43,6 +43,10 @@ SIZE_OPTIONS = ["1024x1024", "1536x1024", "1024x1536", "auto"]
 FORMAT_OPTIONS = ["png", "jpeg", "webp"]
 BACKGROUND_OPTIONS = ["transparent", "opaque"]
 
+# FLUX-specific configuration options
+FLUX_ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "9:21"]
+FLUX_OUTPUT_FORMATS = ["png", "jpg", "jpeg", "webp"]
+
 
 class TuZiImageGenerator:
     """Main class for generating images using Tu-zi.com API"""
@@ -456,6 +460,129 @@ class TuZiImageGenerator:
                 progress.stop()
         
         return downloaded_files
+    
+    def generate_flux_image(
+        self, 
+        prompt: str, 
+        input_image: Optional[str] = None,
+        seed: Optional[int] = None,
+        aspect_ratio: str = "1:1",
+        output_format: str = "png"
+    ) -> Dict[str, Any]:
+        """
+        Generate image using Tu-zi.com FLUX API (flux-kontext-pro model)
+        
+        Args:
+            prompt: The image generation prompt
+            input_image: Base64 encoded reference image (optional)
+            seed: Reproducible generation seed (optional)
+            aspect_ratio: Image dimensions ratio (default: "1:1")
+            output_format: Output image format (default: "png")
+            
+        Returns:
+            Dictionary containing the API response
+        """
+        
+        # Validate aspect ratio
+        if aspect_ratio not in FLUX_ASPECT_RATIOS:
+            raise ValueError(f"Invalid aspect_ratio. Must be one of: {', '.join(FLUX_ASPECT_RATIOS)}")
+        
+        # Validate output format
+        if output_format not in FLUX_OUTPUT_FORMATS:
+            raise ValueError(f"Invalid output_format. Must be one of: {', '.join(FLUX_OUTPUT_FORMATS)}")
+        
+        # Build request data
+        data = {
+            "model": "flux-kontext-pro",
+            "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "output_format": output_format,
+            "safety_tolerance": 6,  # Set to 6 as requested (least restrictive)
+            "prompt_upsampling": True  # Set to true as requested
+        }
+        
+        # Add optional parameters
+        if input_image:
+            data["input_image"] = input_image
+        if seed is not None:
+            data["seed"] = seed
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Log to stderr for debugging
+        logger.info(f"Generating FLUX image with model: flux-kontext-pro")
+        
+        # Display in console if available (CLI mode)
+        if self.console:
+            self.console.print(f"[dim]🎨 Using FLUX model: flux-kontext-pro[/dim]")
+        
+        try:
+            # Use the standard images/generations endpoint
+            flux_url = "https://api.tu-zi.com/v1/images/generations"
+            
+            response = requests.post(
+                flux_url, 
+                json=data, 
+                headers=headers, 
+                timeout=300  # 5 minutes timeout
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"FLUX API Error: {response.status_code} - {response.text}")
+            
+            result = response.json()
+            
+            if "error" in result:
+                raise Exception(f"FLUX API Error: {result['error']['message']}")
+            
+            # Log success to stderr
+            logger.info(f"Successfully generated FLUX image")
+            
+            # Display in console if available (CLI mode)
+            if self.console:
+                self.console.print(f"[green]✅ Successfully generated FLUX image[/green]")
+            
+            return result
+            
+        except Exception as e:
+            # Log failure to stderr
+            logger.error(f"FLUX model failed: {e}")
+            
+            # Display in console if available (CLI mode)
+            if self.console:
+                self.console.print(f"[red]❌ FLUX model failed: {e}[/red]")
+            raise e
+    
+    def extract_flux_image_urls(self, result: Dict[str, Any]) -> List[str]:
+        """
+        Extract image URLs from FLUX API response
+        
+        Args:
+            result: The FLUX API response dictionary
+            
+        Returns:
+            List of image URLs
+        """
+        try:
+            if "data" in result and isinstance(result["data"], list):
+                urls = []
+                for item in result["data"]:
+                    if "url" in item:
+                        urls.append(item["url"])
+                
+                # Log extracted URLs to stderr
+                logger.info(f"Extracted {len(urls)} FLUX image URL(s) from response")
+                
+                return urls
+            else:
+                logger.warning("No data field found in FLUX response")
+                return []
+        except Exception as e:
+            logger.error(f"Error extracting FLUX image URLs: {e}")
+            return []
 
 
 class TuZiSurvey:
@@ -478,28 +605,34 @@ class TuZiSurvey:
     def survey(
         self, 
         prompt: str,
-        stream: bool = True
+        stream: bool = True,
+        deep: bool = False
     ) -> Dict[str, Any]:
         """
-        Conduct a survey/query using Tu-zi.com's o3-all model with web search capabilities
+        Conduct a survey/query using Tu-zi.com's model with web search capabilities
         
         Args:
             prompt: The natural language query/question
             stream: Whether to use streaming response
+            deep: Whether to use o3-pro for deeper analysis (default: False, uses o3-all)
             
         Returns:
             Dictionary containing the API response
         """
         
+        # Select model based on deep parameter
+        model = "o3-pro" if deep else "o3-all"
+        
         # Log survey start to stderr
-        logger.info(f"Starting survey with o3-all model: {prompt[:100]}...")
+        logger.info(f"Starting survey with {model} model: {prompt[:100]}...")
         
         # Display in console if available (CLI mode)
         if self.console:
-            self.console.print(f"[bold cyan]🔍 Surveying with o3-all model...[/bold cyan]")
+            model_display = "o3-pro (deep analysis)" if deep else "o3-all"
+            self.console.print(f"[bold cyan]🔍 Surveying with {model_display} model...[/bold cyan]")
         
         data = {
-            "model": "o3-all",
+            "model": model,
             "stream": stream,
             "messages": [
                 {
@@ -871,4 +1004,4 @@ def validate_parameters(
     
     # Validate background transparency only works with PNG/WebP
     if background == "transparent" and format not in ["png", "webp"]:
-        raise ValueError("Transparent background only supported with PNG or WebP format") 
+        raise ValueError("Transparent background only supported with PNG or WebP format")

@@ -22,6 +22,8 @@ from .core import (
     TuZiSurvey,
     validate_parameters,
     get_api_key,
+    FLUX_ASPECT_RATIOS,
+    FLUX_OUTPUT_FORMATS,
 )
 
 # Create the MCP server
@@ -44,6 +46,18 @@ class SurveyResult(BaseModel):
     message: str = Field(description="Status message")
     content: str = Field(description="The survey response content")
     response_time: float = Field(description="Time taken for response in seconds")
+
+
+class FluxImageGenerationResult(BaseModel):
+    """Result of FLUX image generation"""
+    success: bool = Field(description="Whether the generation was successful")
+    message: str = Field(description="Status message")
+    image_url: str = Field(description="URL of the generated FLUX image")
+    downloaded_file: str = Field(description="Path to the downloaded image file")
+    generation_time: float = Field(description="Time taken for generation in seconds")
+    seed_used: Optional[int] = Field(description="Seed used for generation (if provided)")
+    aspect_ratio: str = Field(description="Aspect ratio used for generation")
+    output_format: str = Field(description="Output format used for generation")
 
 
 @mcp.tool()
@@ -159,7 +173,8 @@ def generate_image(
 @mcp.tool()
 def survey(
     prompt: Annotated[str, Field(description="The natural language query/question for the survey")],
-    show_thinking: Annotated[bool, Field(description="Whether to include the thinking process in the response (default: False)")] = False
+    show_thinking: Annotated[bool, Field(description="Whether to include the thinking process in the response (default: False)")] = False,
+    deep: Annotated[bool, Field(description="Deep analysis for complicated mathemetical or logical questions (default: False)")] = False
 ) -> SurveyResult:
     """Survey/query a topic using LLM with web search capabilities"""
     start_time = time.time()
@@ -174,7 +189,8 @@ def survey(
         # Conduct the survey
         result = survey_obj.survey(
             prompt=prompt,
-            stream=True
+            stream=True,
+            deep=deep
         )
         
         # Extract response content
@@ -196,6 +212,126 @@ def survey(
             message=f"Failed to conduct survey: {str(e)}",
             content="",
             response_time=response_time
+        )
+
+
+@mcp.tool()
+def generate_flux_image(
+    prompt: Annotated[str, Field(description="The text prompt for FLUX image generation")],
+    aspect_ratio: Annotated[
+        str, 
+        Field(description="Image aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21)")
+    ] = "1:1",
+    output_format: Annotated[
+        str, 
+        Field(description="Output image format (png, jpg, jpeg, webp)")
+    ] = "png",
+    seed: Annotated[
+        Optional[int], 
+        Field(description="Reproducible generation seed (optional)")
+    ] = None,
+    input_image_path: Annotated[
+        Optional[str], 
+        Field(description="Path to reference image file (optional)")
+    ] = None,
+    output_path: Annotated[
+        str, 
+        Field(description="Full path where to save the generated image")
+    ] = "images/flux_generated_image.png"
+) -> FluxImageGenerationResult:
+    """Generate an image using FLUX model (flux-kontext-pro)"""
+    start_time = time.time()
+    
+    try:
+        # Validate parameters
+        if aspect_ratio not in FLUX_ASPECT_RATIOS:
+            raise ValueError(f"Invalid aspect_ratio. Must be one of: {', '.join(FLUX_ASPECT_RATIOS)}")
+        
+        if output_format not in FLUX_OUTPUT_FORMATS:
+            raise ValueError(f"Invalid output_format. Must be one of: {', '.join(FLUX_OUTPUT_FORMATS)}")
+        
+        # Get API key
+        api_key = get_api_key()
+        
+        # Initialize generator (without console output for MCP)
+        generator = TuZiImageGenerator(api_key, console=None)
+        
+        # Handle input image if provided
+        input_image_b64 = None
+        if input_image_path:
+            try:
+                import base64
+                with open(input_image_path, 'rb') as f:
+                    image_data = f.read()
+                    input_image_b64 = base64.b64encode(image_data).decode('utf-8')
+                    # Add data URL prefix based on file extension
+                    ext = os.path.splitext(input_image_path)[1].lower()
+                    if ext in ['.jpg', '.jpeg']:
+                        input_image_b64 = f"data:image/jpeg;base64,{input_image_b64}"
+                    elif ext == '.png':
+                        input_image_b64 = f"data:image/png;base64,{input_image_b64}"
+                    elif ext == '.webp':
+                        input_image_b64 = f"data:image/webp;base64,{input_image_b64}"
+                    else:
+                        input_image_b64 = f"data:image/png;base64,{input_image_b64}"  # Default to PNG
+            except Exception as e:
+                raise Exception(f"Failed to read input image: {e}")
+        
+        # Generate the image using FLUX
+        result = generator.generate_flux_image(
+            prompt=prompt,
+            input_image=input_image_b64,
+            seed=seed,
+            aspect_ratio=aspect_ratio,
+            output_format=output_format
+        )
+        
+        # Extract image URLs using FLUX-specific method
+        image_urls = generator.extract_flux_image_urls(result)
+        
+        # Use only the first image URL to simplify
+        if not image_urls:
+            raise Exception("No images were generated by FLUX")
+        
+        first_image_url = image_urls[0]
+        
+        # Parse output path
+        output_dir = os.path.dirname(output_path) or "."
+        base_name = os.path.splitext(os.path.basename(output_path))[0] or "flux_generated_image"
+        
+        # Download only the first image
+        downloaded_files = generator.download_images(
+            [first_image_url], 
+            output_dir=output_dir, 
+            base_name=base_name
+        )
+        
+        downloaded_file = downloaded_files[0] if downloaded_files else ""
+        
+        generation_time = time.time() - start_time
+        
+        return FluxImageGenerationResult(
+            success=True,
+            message="FLUX image generated successfully",
+            image_url=first_image_url,
+            downloaded_file=downloaded_file,
+            generation_time=generation_time,
+            seed_used=seed,
+            aspect_ratio=aspect_ratio,
+            output_format=output_format
+        )
+        
+    except Exception as e:
+        generation_time = time.time() - start_time
+        return FluxImageGenerationResult(
+            success=False,
+            message=f"Failed to generate FLUX image: {str(e)}",
+            image_url="",
+            downloaded_file="",
+            generation_time=generation_time,
+            seed_used=seed,
+            aspect_ratio=aspect_ratio,
+            output_format=output_format
         )
 
 
@@ -245,4 +381,4 @@ def main():
     app()
 
 if __name__ == "__main__":
-    main() 
+    main()
