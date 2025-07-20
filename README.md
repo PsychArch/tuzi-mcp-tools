@@ -1,5 +1,9 @@
 # Tuzi MCP Tools
 
+[![PyPI version](https://badge.fury.io/py/tuzi-mcp-tools.svg)](https://badge.fury.io/py/tuzi-mcp-tools)
+
+English | [简体中文](README_zh.md)
+
 A Python package providing both **CLI** and **MCP server** interfaces for generating images and conducting surveys using the Tu-zi.com API.
 
 ## Features
