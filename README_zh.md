@@ -29,6 +29,35 @@ pipx install tuzi-mcp-tools
 export TUZI_API_KEY='your_api_key_here'
 ```
 
+## MCP 服务器使用
+
+```json
+{
+  "mcpServers": {
+    "tuzi": {
+      "command": "uvx",
+      "args": ["tuzi-mcp-tools"],
+      "env": {
+        "TUZI_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+### 可用的 MCP 工具
+
+MCP 服务器提供三个对应 CLI 命令的工具。所有参数在下面的[通用参数](#通用参数)部分有详细说明。
+
+#### `gpt_image`
+使用 GPT 生成图像，具有自动模型回退功能。
+
+#### `flux_image`
+使用 FLUX 生成高质量图像。
+
+#### `survey`
+使用具有实时网络搜索功能的高级 AI 调研/查询主题。
+
 ## CLI 使用
 
 ### 图像生成
@@ -85,88 +114,51 @@ tuzi survey "解释量子计算" --show-thinking
 tuzi survey "分析量子计算对密码学的影响" --deep
 ```
 
-### CLI 选项
+### 通用参数
 
-#### 图像生成选项 (`tuzi gpt-image`)
+以下参数适用于 CLI 和 MCP 服务器两种接口：
 
-| 选项 | 描述 | 默认值 |
-|------|------|--------|
-| `--quality` | 图像质量 (low, medium, high, auto) | `auto` |
-| `--size` | 尺寸 (1024x1024, 1536x1024, 1024x1536, auto) | `auto` |
-| `--format` | 输出格式 (png, jpeg, webp) | `png` |
-| `--background` | 背景 (opaque, transparent) | `opaque` |
-| `--output` | 输出文件路径 | 自动生成 |
-| `--input-image` | 参考图像文件路径 | `None` |
-| `--compression` | 压缩级别 0-100 (JPEG/WebP) | `None` |
-| `--no-stream` | 禁用流式响应 | `False` |
-| `--verbose` | 显示完整 API 响应 | `False` |
+#### GPT 图像生成参数
 
-#### 调研选项 (`tuzi survey`)
+| 参数 | CLI 选项 | MCP 参数 | 描述 | 默认值 |
+|------|----------|----------|------|-------|
+| `prompt` | (位置参数) | `prompt` | 图像生成的文本提示 | - |
+| `quality` | `--quality` | `quality` | 图像质量 (low, medium, high, auto) | `auto` |
+| `size` | `--size` | `size` | 尺寸 (1024x1024, 1536x1024, 1024x1536, auto) | `auto` |
+| `format` | `--format` | `format` | 输出格式 (png, jpeg, webp) | `png` |
+| `background` | `--background` | `background` | 背景 (opaque, transparent) | `opaque` |
+| `compression` | `--compression` | `compression` | 压缩级别 0-100 (JPEG/WebP) | `None` |
+| `output_path` | `--output` | `output_path` | 输出文件路径 | 自动生成 |
+| `input_image` | `--input-image` | `input_image_path` | 参考图像文件路径 | `None` |
+| `conversation_id` | `--conversation-id` | `conversation_id` | 对话 ID，用于上下文管理 | `None` |
+| `close_conversation` | `--close-conversation` | `close_conversation` | 请求后关闭对话 | `False` |
+
+#### FLUX 图像生成参数
+
+| 参数 | CLI 选项 | MCP 参数 | 描述 | 默认值 |
+|------|----------|----------|------|-------|
+| `prompt` | (位置参数) | `prompt` | FLUX 图像生成的文本提示 | - |
+| `aspect_ratio` | `--aspect-ratio` | `aspect_ratio` | 图像宽高比 (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21) | `1:1` |
+| `output_format` | `--format` | `output_format` | 输出格式 (png, jpg, jpeg, webp) | `png` |
+| `seed` | `--seed` | `seed` | 可重现生成种子 | `None` |
+| `input_image` | `--input-image` | `input_image_path` | 参考图像文件路径 | `None` |
+| `output_path` | `--output` | `output_path` | 输出文件路径 | 自动生成 |
+| `conversation_id` | `--conversation-id` | `conversation_id` | 对话 ID，用于上下文管理 | `None` |
+| `close_conversation` | `--close-conversation` | `close_conversation` | 请求后关闭对话 | `False` |
+
+#### 调研/查询参数
+
+| 参数 | CLI 选项 | MCP 参数 | 描述 | 默认值 |
+|------|----------|----------|------|-------|
+| `prompt` | (位置参数) | `prompt` | 自然语言查询/问题 | - |
+| `show_thinking` | `--show-thinking` | `show_thinking` | 除最终答案外还显示思考过程 | `False` |
+| `deep` | `--deep` | `deep` | 启用高级分析模式 | `False` |
+| `conversation_id` | `--conversation-id` | `conversation_id` | 对话 ID，用于上下文管理 | `None` |
+| `close_conversation` | `--close-conversation` | `close_conversation` | 请求后关闭对话 | `False` |
+
+#### CLI 专用选项
 
 | 选项 | 描述 | 默认值 |
 |------|------|--------|
 | `--no-stream` | 禁用流式响应 | `False` |
 | `--verbose` | 显示详细响应信息 | `False` |
-| `--show-thinking` | 除最终答案外还显示思考过程 | `False` |
-| `--deep` | 启用高级分析模式 | `False` |
-
-#### FLUX 生成选项 (`tuzi flux-image`)
-
-| 选项 | 描述 | 默认值 |
-|------|------|--------|
-| `--aspect-ratio` | 图像宽高比 (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21) | `1:1` |
-| `--format` | 输出格式 (png, jpg, jpeg, webp) | `png` |
-| `--seed` | 可重现生成种子 | `None` |
-| `--input-image` | 参考图像文件路径 | `None` |
-| `--output` | 输出文件路径 | 自动生成 |
-| `--verbose` | 显示完整 API 响应 | `False` |
-
-## MCP 服务器使用
-
-```json
-{
-  "mcpServers": {
-    "tuzi": {
-      "command": "uvx",
-      "args": ["tuzi-mcp-tools"],
-      "env": {
-        "TUZI_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-### 可用的 MCP 工具
-
-#### `gpt_image`
-使用 GPT 生成图像。
-
-**参数：**
-- `prompt` (字符串)：图像生成的文本提示
-- `quality` (字符串)：图像质量 (auto, low, medium, high)
-- `size` (字符串)：图像尺寸 (auto, 1024x1024, 1536x1024, 1024x1536)
-- `format` (字符串)：输出格式 (png, jpeg, webp)
-- `background` (字符串)：背景类型 (opaque, transparent)
-- `compression` (整数)：JPEG/WebP 的压缩级别 0-100
-- `output_path` (字符串)：保存图像的完整路径
-- `input_image_path` (字符串，可选)：参考图像文件路径
-
-#### `flux_image`
-使用 FLUX 生成图像。
-
-**参数：**
-- `prompt` (字符串)：FLUX 图像生成的文本提示
-- `aspect_ratio` (字符串)：图像宽高比 (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21)
-- `output_format` (字符串)：输出格式 (png, jpg, jpeg, webp)
-- `seed` (整数，可选)：可重现生成种子
-- `input_image_path` (字符串，可选)：参考图像文件路径
-- `output_path` (字符串)：保存图像的完整路径
-
-#### `survey`
-使用具有实时网络搜索功能的高级 AI 调研/查询主题。
-
-**参数：**
-- `prompt` (字符串)：自然语言查询/问题
-- `show_thinking` (布尔值)：是否在响应中包含思考过程
-- `deep` (布尔值)：是否启用高级分析模式（默认：False）

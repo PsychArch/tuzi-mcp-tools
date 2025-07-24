@@ -29,6 +29,35 @@ Set your Tu-zi.com API key:
 export TUZI_API_KEY='your_api_key_here'
 ```
 
+## MCP Server Usage
+
+```json
+{
+  "mcpServers": {
+    "tuzi": {
+      "command": "uvx",
+      "args": ["tuzi-mcp-tools"],
+      "env": {
+        "TUZI_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+The MCP server provides three tools that correspond to the CLI commands. All parameters are documented in the [Common Arguments](#common-arguments) section below.
+
+#### `gpt_image`
+Generate images using GPT with automatic model fallback.
+
+#### `flux_image`
+Generate images using FLUX for premium quality.
+
+#### `survey`
+Survey/query topics using advanced AI with real-time web search capabilities.
+
 ## CLI Usage
 
 ### Image Generation
@@ -85,88 +114,51 @@ tuzi survey "Explain quantum computing" --show-thinking
 tuzi survey "Analyze the implications of quantum computing on cryptography" --deep
 ```
 
-### CLI Options
+### Common Arguments
 
-#### Image Generation Options (`tuzi gpt-image`)
+The following arguments are available for both CLI and MCP server interfaces:
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--quality` | Image quality (low, medium, high, auto) | `auto` |
-| `--size` | Dimensions (1024x1024, 1536x1024, 1024x1536, auto) | `auto` |
-| `--format` | Output format (png, jpeg, webp) | `png` |
-| `--background` | Background (opaque, transparent) | `opaque` |
-| `--output` | Output file path | auto-generated |
-| `--input-image` | Path to reference image file | `None` |
-| `--compression` | Compression level 0-100 (JPEG/WebP) | `None` |
-| `--no-stream` | Disable streaming response | `False` |
-| `--verbose` | Show full API response | `False` |
+#### GPT Image Generation Arguments
 
-#### Survey Options (`tuzi survey`)
+| Argument | CLI Option | MCP Parameter | Description | Default |
+|----------|------------|---------------|-------------|---------|
+| `prompt` | (positional) | `prompt` | Text prompt for image generation | - |
+| `quality` | `--quality` | `quality` | Image quality (low, medium, high, auto) | `auto` |
+| `size` | `--size` | `size` | Dimensions (1024x1024, 1536x1024, 1024x1536, auto) | `auto` |
+| `format` | `--format` | `format` | Output format (png, jpeg, webp) | `png` |
+| `background` | `--background` | `background` | Background (opaque, transparent) | `opaque` |
+| `compression` | `--compression` | `compression` | Compression level 0-100 (JPEG/WebP) | `None` |
+| `output_path` | `--output` | `output_path` | Output file path | auto-generated |
+| `input_image` | `--input-image` | `input_image_path` | Path to reference image file | `None` |
+| `conversation_id` | `--conversation-id` | `conversation_id` | Conversation ID for context | `None` |
+| `close_conversation` | `--close-conversation` | `close_conversation` | Close conversation after request | `False` |
+
+#### FLUX Image Generation Arguments
+
+| Argument | CLI Option | MCP Parameter | Description | Default |
+|----------|------------|---------------|-------------|---------|
+| `prompt` | (positional) | `prompt` | Text prompt for FLUX image generation | - |
+| `aspect_ratio` | `--aspect-ratio` | `aspect_ratio` | Image aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21) | `1:1` |
+| `output_format` | `--format` | `output_format` | Output format (png, jpg, jpeg, webp) | `png` |
+| `seed` | `--seed` | `seed` | Reproducible generation seed | `None` |
+| `input_image` | `--input-image` | `input_image_path` | Path to reference image file | `None` |
+| `output_path` | `--output` | `output_path` | Output file path | auto-generated |
+| `conversation_id` | `--conversation-id` | `conversation_id` | Conversation ID for context | `None` |
+| `close_conversation` | `--close-conversation` | `close_conversation` | Close conversation after request | `False` |
+
+#### Survey/Query Arguments
+
+| Argument | CLI Option | MCP Parameter | Description | Default |
+|----------|------------|---------------|-------------|---------|
+| `prompt` | (positional) | `prompt` | Natural language query/question | - |
+| `show_thinking` | `--show-thinking` | `show_thinking` | Show thinking process in addition to final answer | `False` |
+| `deep` | `--deep` | `deep` | Enable advanced analysis mode | `False` |
+| `conversation_id` | `--conversation-id` | `conversation_id` | Conversation ID for context | `None` |
+| `close_conversation` | `--close-conversation` | `close_conversation` | Close conversation after request | `False` |
+
+#### CLI-Only Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--no-stream` | Disable streaming response | `False` |
 | `--verbose` | Show detailed response information | `False` |
-| `--show-thinking` | Show thinking process in addition to final answer | `False` |
-| `--deep` | Enable advanced analysis mode | `False` |
-
-#### FLUX Generation Options (`tuzi flux-image`)
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--aspect-ratio` | Image aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21) | `1:1` |
-| `--format` | Output format (png, jpg, jpeg, webp) | `png` |
-| `--seed` | Reproducible generation seed | `None` |
-| `--input-image` | Path to reference image file | `None` |
-| `--output` | Output file path | auto-generated |
-| `--verbose` | Show full API response | `False` |
-
-## MCP Server Usage
-
-```json
-{
-  "mcpServers": {
-    "tuzi": {
-      "command": "uvx",
-      "args": ["tuzi-mcp-tools"],
-      "env": {
-        "TUZI_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
-
-### Available MCP Tools
-
-#### `gpt_image`
-Generate images using gpt.
-
-**Parameters:**
-- `prompt` (string): Text prompt for image generation
-- `quality` (string): Image quality (auto, low, medium, high)
-- `size` (string): Image dimensions (auto, 1024x1024, 1536x1024, 1024x1536)
-- `format` (string): Output format (png, jpeg, webp)
-- `background` (string): Background type (opaque, transparent)
-- `compression` (integer): Compression level 0-100 for JPEG/WebP
-- `output_path` (string): Full path where to save the image
-- `input_image_path` (string, optional): Path to reference image file
-
-#### `flux_image`
-Generate images using flux.
-
-**Parameters:**
-- `prompt` (string): Text prompt for FLUX image generation
-- `aspect_ratio` (string): Image aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21)
-- `output_format` (string): Output format (png, jpg, jpeg, webp)
-- `seed` (integer, optional): Reproducible generation seed
-- `input_image_path` (string, optional): Path to reference image file
-- `output_path` (string): Full path where to save the image
-
-#### `survey`
-Survey/query a topic using advanced AI with real-time web search capabilities.
-
-**Parameters:**
-- `prompt` (string): Natural language query/question
-- `show_thinking` (boolean): Whether to include thinking process in response
-- `deep` (boolean): Whether to enable advanced analysis mode (default: False)
