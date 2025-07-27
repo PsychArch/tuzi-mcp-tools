@@ -7,6 +7,7 @@ managing task lifecycle and result collection.
 
 import asyncio
 import logging
+import time
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime
 
@@ -31,6 +32,7 @@ class TaskManagementService:
         
         # Task storage - no LRU, tasks managed through conversation lifecycle
         self.executing_tasks: Dict[str, AsyncTask] = {}  # task_id -> AsyncTask
+        self.completed_tasks: Dict[str, AsyncTask] = {}  # task_id -> AsyncTask (for barrier collection)
         self.asyncio_tasks: Dict[str, asyncio.Task] = {}  # task_id -> asyncio.Task
         
         logger.info("TaskManagementService initialized with conversation integration")
@@ -39,7 +41,7 @@ class TaskManagementService:
         self,
         prompt: str,
         output_path: str,
-        conversation_id: str,
+        conversation_id: Optional[str] = None,
         quality: str = "auto",
         size: str = "auto",
         format: str = "png",
@@ -64,6 +66,10 @@ class TaskManagementService:
         Returns:
             Task ID for tracking
         """
+        # Generate conversation ID if not provided
+        if conversation_id is None:
+            conversation_id = f"gpt_task_{int(time.time())}"
+        
         # Create task through conversation service to get proper sequential ID
         task_id = self.conversation_service.create_task_for_conversation(
             conversation_id=conversation_id,
@@ -109,7 +115,7 @@ class TaskManagementService:
         self,
         prompt: str,
         output_path: str,
-        conversation_id: str,
+        conversation_id: Optional[str] = None,
         aspect_ratio: str = "1:1",
         output_format: str = "png",
         seed: Optional[int] = None,
@@ -130,6 +136,10 @@ class TaskManagementService:
         Returns:
             Task ID for tracking
         """
+        # Generate conversation ID if not provided
+        if conversation_id is None:
+            conversation_id = f"flux_task_{int(time.time())}"
+        
         # Create task through conversation service to get proper sequential ID
         task_id = self.conversation_service.create_task_for_conversation(
             conversation_id=conversation_id,
@@ -193,15 +203,49 @@ class TaskManagementService:
             except asyncio.TimeoutError:
                 logger.warning("Some tasks timed out during barrier wait")
         
-        # Collect all results from completed tasks (no more LRU cleanup)
+        # Collect all results from completed tasks
         async with self._lock:
             results = {}
             completed_count = 0
             failed_count = 0
             
-            # Process all tasks that have completed (they're managed through conversations now)
-            # Just return empty results since tasks are managed through conversation lifecycle
-            logger.info("Barrier completed - tasks are now managed through conversation lifecycle")
+            # Process all completed tasks and collect their results
+            for task_id, task in self.completed_tasks.items():
+                try:
+                    if task.status == TaskStatus.COMPLETED:
+                        results[task_id] = {
+                            "success": True,
+                            "output_path": task.result.get("output_path") if task.result else None,
+                            "error": None
+                        }
+                        completed_count += 1
+                    elif task.status == TaskStatus.FAILED:
+                        results[task_id] = {
+                            "success": False,
+                            "output_path": None,
+                            "error": task.error_message
+                        }
+                        failed_count += 1
+                    elif task.status in [TaskStatus.PENDING, TaskStatus.EXECUTING]:
+                        # Task is still running, mark as failed for now
+                        results[task_id] = {
+                            "success": False,
+                            "output_path": None,
+                            "error": f"Task still in {task.status.value} state"
+                        }
+                        failed_count += 1
+                except Exception as e:
+                    results[task_id] = {
+                        "success": False,
+                        "output_path": None,
+                        "error": f"Error collecting result: {str(e)}"
+                    }
+                    failed_count += 1
+            
+            logger.info(f"Barrier completed - {completed_count} succeeded, {failed_count} failed")
+            
+            # Clear completed tasks after collecting results
+            self.completed_tasks.clear()
             
             # Return summary
             return {
@@ -246,10 +290,12 @@ class TaskManagementService:
                 "output_path": output_path
             }
             
-            # Mark task as completed and notify conversation service
+            # Mark task as completed and move to completed tasks
             async with self._lock:
                 task.mark_completed(result)
-                self._remove_from_executing(task)
+                if task.task_id in self.executing_tasks:
+                    del self.executing_tasks[task.task_id]
+                self.completed_tasks[task.task_id] = task
                 
             # Notify conversation service that task is completed
             self.conversation_service.mark_task_completed(
@@ -259,10 +305,12 @@ class TaskManagementService:
             )
                 
         except Exception as e:
-            # Mark task as failed and notify conversation service
+            # Mark task as failed and move to completed tasks
             async with self._lock:
                 task.mark_failed(str(e))
-                self._remove_from_executing(task)
+                if task.task_id in self.executing_tasks:
+                    del self.executing_tasks[task.task_id]
+                self.completed_tasks[task.task_id] = task
                 
             # Notify conversation service that task is completed (even if failed)
             self.conversation_service.mark_task_completed(
@@ -298,10 +346,12 @@ class TaskManagementService:
                 "output_path": output_path
             }
             
-            # Mark task as completed and notify conversation service
+            # Mark task as completed and move to completed tasks
             async with self._lock:
                 task.mark_completed(result)
-                self._remove_from_executing(task)
+                if task.task_id in self.executing_tasks:
+                    del self.executing_tasks[task.task_id]
+                self.completed_tasks[task.task_id] = task
                 
             # Notify conversation service that task is completed
             self.conversation_service.mark_task_completed(
@@ -311,10 +361,12 @@ class TaskManagementService:
             )
                 
         except Exception as e:
-            # Mark task as failed and notify conversation service
+            # Mark task as failed and move to completed tasks
             async with self._lock:
                 task.mark_failed(str(e))
-                self._remove_from_executing(task)
+                if task.task_id in self.executing_tasks:
+                    del self.executing_tasks[task.task_id]
+                self.completed_tasks[task.task_id] = task
                 
             # Notify conversation service that task is completed (even if failed)
             self.conversation_service.mark_task_completed(

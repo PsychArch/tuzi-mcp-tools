@@ -180,3 +180,5 @@ uv.lock
 # Claude Code specific files
 CLAUDE.md
 CLAUDE.local.md 
+
+tmp/
