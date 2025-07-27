@@ -8,12 +8,11 @@
 
 ## 功能特性
 
-- **双重接口**：CLI 和 MCP 服务器
-- **GPT 图像生成**：GPT 文本转图像
-- **FLUX 图像生成**：FLUX 文本转图像
-- **调研/查询**：具有实时网络搜索功能的高级 AI 驱动研究
-- **多种格式**：PNG、JPEG、WebP 格式及质量设置
-- **实时进度**：流式生成和进度跟踪
+- **双重接口**：CLI 和 MCP 服务器，采用清洁架构
+- **异步任务管理**：提交/屏障模式，支持高效并行处理
+- **GPT 图像生成**：GPT 文本转图像，支持对话连续性
+- **FLUX 图像生成**：FLUX 文本转图像，支持对话跟踪
+- **对话管理**：在多个任务间继续图像编辑
 
 ## 安装
 
@@ -47,118 +46,19 @@ export TUZI_API_KEY='your_api_key_here'
 
 ### 可用的 MCP 工具
 
-MCP 服务器提供三个对应 CLI 命令的工具。所有参数在下面的[通用参数](#通用参数)部分有详细说明。
+MCP 服务器提供**异步任务管理**，采用提交/屏障模式进行高效图像生成。
 
-#### `gpt_image`
-使用 GPT 生成图像，具有自动模型回退功能。
+#### `submit_gpt_image`
+提交 GPT 图像生成任务进行异步处理，立即返回任务 ID。
 
-#### `flux_image`
-使用 FLUX 生成高质量图像。
+#### `submit_flux_image`
+提交 FLUX 图像生成任务进行异步处理，立即返回任务 ID。
 
-#### `survey`
-使用具有实时网络搜索功能的高级 AI 调研/查询主题。
+#### `task_barrier`
+等待所有已提交的图像生成任务完成并下载结果。报告对话 ID 以便任务跟踪。
 
 ## CLI 使用
 
-### 图像生成
-
-```bash
-# 使用智能模型选择生成图像
-tuzi gpt-image "山峦上的美丽日落"
-
-# 高质量自定义选项
-tuzi gpt-image "一只可爱的猫" --quality high --size 1024x1536 --format png
-
-# 透明背景
-tuzi gpt-image "公司标志" --background transparent --output logo.png
-
-# 使用参考图像进行风格转换或修改
-tuzi gpt-image "让这个更加丰富多彩" --input-image reference.jpg
-
-# 使用新提示转换现有图像
-tuzi gpt-image "将其转换为赛博朋克场景" --input-image photo.png
 ```
-
-### FLUX 图像生成
-
-```bash
-# 使用 FLUX 生成高质量图像
-tuzi flux-image "山峦上的美丽日落"
-
-# 自定义宽高比和格式
-tuzi flux-image "未来主义城市景观" --aspect-ratio 16:9 --format webp
-
-# 使用参考图像进行风格转换或修改
-tuzi flux-image "让这个更加丰富多彩" --input-image reference.jpg --seed 42
-
-# 使用新提示转换现有图像
-tuzi flux-image "将其转换为赛博朋克场景" --input-image photo.png --aspect-ratio 16:9
-
-# 超宽全景图像
-tuzi flux-image "山地景观全景" --aspect-ratio 21:9 --output panorama.png
+uvx --from tuzi-mcp-tools tuzi --help
 ```
-
-### 调研/查询
-
-```bash
-# 使用网络搜索功能提问
-tuzi survey "AI 的最新发展是什么？"
-
-# 获取当前信息
-tuzi survey "纽约当前的天气如何？"
-
-# 显示思考过程
-tuzi survey "解释量子计算" --show-thinking
-
-# 为复杂主题启用深度分析模式
-tuzi survey "分析量子计算对密码学的影响" --deep
-```
-
-### 通用参数
-
-以下参数适用于 CLI 和 MCP 服务器两种接口：
-
-#### GPT 图像生成参数
-
-| 参数 | CLI 选项 | MCP 参数 | 描述 | 默认值 |
-|------|----------|----------|------|-------|
-| `prompt` | (位置参数) | `prompt` | 图像生成的文本提示 | - |
-| `quality` | `--quality` | `quality` | 图像质量 (low, medium, high, auto) | `auto` |
-| `size` | `--size` | `size` | 尺寸 (1024x1024, 1536x1024, 1024x1536, auto) | `auto` |
-| `format` | `--format` | `format` | 输出格式 (png, jpeg, webp) | `png` |
-| `background` | `--background` | `background` | 背景 (opaque, transparent) | `opaque` |
-| `compression` | `--compression` | `compression` | 压缩级别 0-100 (JPEG/WebP) | `None` |
-| `output_path` | `--output` | `output_path` | 输出文件路径 | 自动生成 |
-| `input_image` | `--input-image` | `input_image_path` | 参考图像文件路径 | `None` |
-| `conversation_id` | `--conversation-id` | `conversation_id` | 对话 ID，用于上下文管理 | `None` |
-| `close_conversation` | `--close-conversation` | `close_conversation` | 请求后关闭对话 | `False` |
-
-#### FLUX 图像生成参数
-
-| 参数 | CLI 选项 | MCP 参数 | 描述 | 默认值 |
-|------|----------|----------|------|-------|
-| `prompt` | (位置参数) | `prompt` | FLUX 图像生成的文本提示 | - |
-| `aspect_ratio` | `--aspect-ratio` | `aspect_ratio` | 图像宽高比 (1:1, 16:9, 9:16, 4:3, 3:4, 21:9, 9:21) | `1:1` |
-| `output_format` | `--format` | `output_format` | 输出格式 (png, jpg, jpeg, webp) | `png` |
-| `seed` | `--seed` | `seed` | 可重现生成种子 | `None` |
-| `input_image` | `--input-image` | `input_image_path` | 参考图像文件路径 | `None` |
-| `output_path` | `--output` | `output_path` | 输出文件路径 | 自动生成 |
-| `conversation_id` | `--conversation-id` | `conversation_id` | 对话 ID，用于上下文管理 | `None` |
-| `close_conversation` | `--close-conversation` | `close_conversation` | 请求后关闭对话 | `False` |
-
-#### 调研/查询参数
-
-| 参数 | CLI 选项 | MCP 参数 | 描述 | 默认值 |
-|------|----------|----------|------|-------|
-| `prompt` | (位置参数) | `prompt` | 自然语言查询/问题 | - |
-| `show_thinking` | `--show-thinking` | `show_thinking` | 除最终答案外还显示思考过程 | `False` |
-| `deep` | `--deep` | `deep` | 启用高级分析模式 | `False` |
-| `conversation_id` | `--conversation-id` | `conversation_id` | 对话 ID，用于上下文管理 | `None` |
-| `close_conversation` | `--close-conversation` | `close_conversation` | 请求后关闭对话 | `False` |
-
-#### CLI 专用选项
-
-| 选项 | 描述 | 默认值 |
-|------|------|--------|
-| `--no-stream` | 禁用流式响应 | `False` |
-| `--verbose` | 显示详细响应信息 | `False` |
