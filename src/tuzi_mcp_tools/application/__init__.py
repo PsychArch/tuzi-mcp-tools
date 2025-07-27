@@ -6,11 +6,7 @@ and coordinate between different layers of the application.
 """
 
 from .image_service import ImageGenerationService
-from .survey_service import SurveyService  
+from .survey_service import SurveyService
 from .task_service import TaskManagementService
 
-__all__ = [
-    "ImageGenerationService",
-    "SurveyService",
-    "TaskManagementService"
-]
+__all__ = ["ImageGenerationService", "SurveyService", "TaskManagementService"]

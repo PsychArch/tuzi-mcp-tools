@@ -7,6 +7,4 @@ that doesn't naturally belong to a single entity.
 
 from .conversation_service import ConversationService
 
-__all__ = [
-    "ConversationService"
-]
+__all__ = ["ConversationService"]
