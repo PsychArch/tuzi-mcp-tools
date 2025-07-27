@@ -5,14 +5,13 @@ This service handles the submit/barrier pattern for asynchronous image generatio
 managing task lifecycle and result collection.
 """
 
-import uuid
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List
-from collections import OrderedDict
+from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime
 
-from ..domain.entities import AsyncTask, TaskStatus, GeneratedImage
+from ..domain.entities import AsyncTask, TaskStatus, GeneratedImage, ConversationType
+from ..domain.services.conversation_service import ConversationService
 from .image_service import ImageGenerationService
 
 logger = logging.getLogger(__name__)
@@ -24,30 +23,29 @@ class TaskManagementService:
     def __init__(
         self,
         image_service: ImageGenerationService,
-        max_completed_tasks: int = 100
+        conversation_service: ConversationService
     ):
         self.image_service = image_service
-        self.max_completed_tasks = max_completed_tasks
+        self.conversation_service = conversation_service
         self._lock = asyncio.Lock()
         
-        # Task storage with LRU behavior
+        # Task storage - no LRU, tasks managed through conversation lifecycle
         self.executing_tasks: Dict[str, AsyncTask] = {}  # task_id -> AsyncTask
         self.asyncio_tasks: Dict[str, asyncio.Task] = {}  # task_id -> asyncio.Task
-        self.completed_tasks: OrderedDict[str, AsyncTask] = OrderedDict()  # task_id -> AsyncTask
         
-        logger.info(f"TaskManagementService initialized with max_completed_tasks={max_completed_tasks}")
+        logger.info("TaskManagementService initialized with conversation integration")
     
     async def submit_gpt_image_task(
         self,
         prompt: str,
         output_path: str,
+        conversation_id: str,
         quality: str = "auto",
         size: str = "auto",
         format: str = "png",
         background: str = "opaque",
         output_compression: Optional[int] = None,
-        input_image: Optional[str] = None,
-        conversation_id: Optional[str] = None
+        input_image: Optional[str] = None
     ) -> str:
         """
         Submit a GPT image generation task for async execution
@@ -55,22 +53,29 @@ class TaskManagementService:
         Args:
             prompt: Image generation prompt
             output_path: Path where to save the generated image
+            conversation_id: Required conversation ID
             quality: Image quality setting
             size: Image size setting
             format: Output format
             background: Background type
             output_compression: Compression level
             input_image: Base64 encoded reference image
-            conversation_id: Optional conversation ID
             
         Returns:
             Task ID for tracking
         """
-        task_id = str(uuid.uuid4())
+        # Create task through conversation service to get proper sequential ID
+        task_id = self.conversation_service.create_task_for_conversation(
+            conversation_id=conversation_id,
+            conversation_type=ConversationType.IMAGE,
+            task_type="gpt_image"
+        )
         
-        # Create task entity
+        # Create task entity with proper relationship
         task = AsyncTask(
             task_id=task_id,
+            conversation_id=conversation_id,
+            task_sequence=int(task_id.split('_task_')[1]),
             task_type="gpt_image"
         )
         
@@ -84,8 +89,7 @@ class TaskManagementService:
             format=format,
             background=background,
             output_compression=output_compression,
-            input_image=input_image,
-            conversation_id=conversation_id
+            input_image=input_image
         )
         
         # Submit for execution
@@ -105,11 +109,11 @@ class TaskManagementService:
         self,
         prompt: str,
         output_path: str,
+        conversation_id: str,
         aspect_ratio: str = "1:1",
         output_format: str = "png",
         seed: Optional[int] = None,
-        input_image: Optional[str] = None,
-        conversation_id: Optional[str] = None
+        input_image: Optional[str] = None
     ) -> str:
         """
         Submit a FLUX image generation task for async execution
@@ -117,20 +121,27 @@ class TaskManagementService:
         Args:
             prompt: Image generation prompt
             output_path: Path where to save the generated image
+            conversation_id: Required conversation ID
             aspect_ratio: Image aspect ratio
             output_format: Output format
             seed: Optional seed for reproducible generation
             input_image: Base64 encoded reference image
-            conversation_id: Optional conversation ID
             
         Returns:
             Task ID for tracking
         """
-        task_id = str(uuid.uuid4())
+        # Create task through conversation service to get proper sequential ID
+        task_id = self.conversation_service.create_task_for_conversation(
+            conversation_id=conversation_id,
+            conversation_type=ConversationType.FLUX,
+            task_type="flux_image"
+        )
         
-        # Create task entity
+        # Create task entity with proper relationship
         task = AsyncTask(
             task_id=task_id,
+            conversation_id=conversation_id,
+            task_sequence=int(task_id.split('_task_')[1]),
             task_type="flux_image"
         )
         
@@ -142,8 +153,7 @@ class TaskManagementService:
             aspect_ratio=aspect_ratio,
             output_format=output_format,
             seed=seed,
-            input_image=input_image,
-            conversation_id=conversation_id
+            input_image=input_image
         )
         
         # Submit for execution
@@ -183,37 +193,17 @@ class TaskManagementService:
             except asyncio.TimeoutError:
                 logger.warning("Some tasks timed out during barrier wait")
         
-        # Collect all completed results
+        # Collect all results from completed tasks (no more LRU cleanup)
         async with self._lock:
             results = {}
             completed_count = 0
             failed_count = 0
             
-            # Process all completed tasks
-            for task_id, task in self.completed_tasks.items():
-                if task.status == TaskStatus.COMPLETED:
-                    results[task_id] = {
-                        "success": True,
-                        "result": task.result,
-                        "error": None,
-                        "completed_at": task.completed_at.isoformat() if task.completed_at else None
-                    }
-                    completed_count += 1
-                elif task.status == TaskStatus.FAILED:
-                    results[task_id] = {
-                        "success": False,
-                        "result": None,
-                        "error": task.error_message,
-                        "completed_at": task.completed_at.isoformat() if task.completed_at else None
-                    }
-                    failed_count += 1
+            # Process all tasks that have completed (they're managed through conversations now)
+            # Just return empty results since tasks are managed through conversation lifecycle
+            logger.info("Barrier completed - tasks are now managed through conversation lifecycle")
             
-            # Clear completed tasks after collecting (barrier cleans up)
-            self.completed_tasks.clear()
-            
-            logger.info(f"Barrier returning {len(results)} task results (completed: {completed_count}, failed: {failed_count})")
-            
-            # Return summary with individual results
+            # Return summary
             return {
                 "completed": completed_count,
                 "failed": failed_count,
@@ -226,9 +216,7 @@ class TaskManagementService:
         async with self._lock:
             return {
                 "executing_tasks": len(self.executing_tasks),
-                "completed_tasks": len(self.completed_tasks),
-                "executing_task_ids": list(self.executing_tasks.keys()),
-                "completed_task_ids": list(self.completed_tasks.keys())
+                "executing_task_ids": list(self.executing_tasks.keys())
             }
     
     async def _execute_gpt_image_task(
@@ -258,16 +246,30 @@ class TaskManagementService:
                 "output_path": output_path
             }
             
-            # Mark task as completed
+            # Mark task as completed and notify conversation service
             async with self._lock:
                 task.mark_completed(result)
-                self._move_to_completed(task)
+                self._remove_from_executing(task)
+                
+            # Notify conversation service that task is completed
+            self.conversation_service.mark_task_completed(
+                task_id=task.task_id,
+                conversation_id=task.conversation_id,
+                conversation_type=ConversationType.IMAGE
+            )
                 
         except Exception as e:
-            # Mark task as failed
+            # Mark task as failed and notify conversation service
             async with self._lock:
                 task.mark_failed(str(e))
-                self._move_to_completed(task)
+                self._remove_from_executing(task)
+                
+            # Notify conversation service that task is completed (even if failed)
+            self.conversation_service.mark_task_completed(
+                task_id=task.task_id,
+                conversation_id=task.conversation_id,
+                conversation_type=ConversationType.IMAGE
+            )
     
     async def _execute_flux_image_task(
         self,
@@ -296,19 +298,33 @@ class TaskManagementService:
                 "output_path": output_path
             }
             
-            # Mark task as completed
+            # Mark task as completed and notify conversation service
             async with self._lock:
                 task.mark_completed(result)
-                self._move_to_completed(task)
+                self._remove_from_executing(task)
+                
+            # Notify conversation service that task is completed
+            self.conversation_service.mark_task_completed(
+                task_id=task.task_id,
+                conversation_id=task.conversation_id,
+                conversation_type=ConversationType.FLUX
+            )
                 
         except Exception as e:
-            # Mark task as failed
+            # Mark task as failed and notify conversation service
             async with self._lock:
                 task.mark_failed(str(e))
-                self._move_to_completed(task)
+                self._remove_from_executing(task)
+                
+            # Notify conversation service that task is completed (even if failed)
+            self.conversation_service.mark_task_completed(
+                task_id=task.task_id,
+                conversation_id=task.conversation_id,
+                conversation_type=ConversationType.FLUX
+            )
     
-    def _move_to_completed(self, task: AsyncTask) -> None:
-        """Move task from executing to completed (must be called with lock held)"""
+    def _remove_from_executing(self, task: AsyncTask) -> None:
+        """Remove task from executing lists (must be called with lock held)"""
         task_id = task.task_id
         
         # Remove from executing
@@ -317,13 +333,4 @@ class TaskManagementService:
         if task_id in self.asyncio_tasks:
             del self.asyncio_tasks[task_id]
         
-        # Add to completed with LRU management
-        self.completed_tasks[task_id] = task
-        
-        # LRU cleanup - remove oldest completed tasks if over limit
-        while len(self.completed_tasks) > self.max_completed_tasks:
-            oldest_task_id = next(iter(self.completed_tasks))
-            logger.info(f"LRU cleanup: removing oldest completed task {oldest_task_id}")
-            del self.completed_tasks[oldest_task_id]
-        
-        logger.info(f"Task {task_id} moved to completed with status: {task.status.value}")
+        logger.info(f"Task {task_id} removed from executing with status: {task.status.value}")

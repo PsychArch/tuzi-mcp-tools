@@ -150,9 +150,22 @@ class ConversationService:
             # Move to end (mark as most recently used)
             self.conversations.move_to_end(conversation_key)
             
-            # Implement circular buffer: remove oldest if over limit
+            # Implement circular buffer: remove oldest if over limit, but protect conversations with pending tasks
             while len(self.conversations) > self.max_conversations:
                 oldest_key = next(iter(self.conversations))
+                oldest_conversation = self.conversations[oldest_key]
+                
+                # Skip conversations with pending tasks
+                if oldest_conversation.has_pending_tasks():
+                    logger.info(f"Skipping deletion of conversation with pending tasks: {oldest_key}")
+                    # Move to end to avoid infinite loop, but keep it
+                    self.conversations.move_to_end(oldest_key)
+                    # If all conversations have pending tasks, we can't remove any
+                    if all(conv.has_pending_tasks() for conv in self.conversations.values()):
+                        logger.warning("All conversations have pending tasks, cannot remove any from buffer")
+                        break
+                    continue
+                
                 logger.info(f"Removing oldest conversation from buffer: {oldest_key}")
                 del self.conversations[oldest_key]
             
@@ -273,6 +286,60 @@ class ConversationService:
             "last_user_message": conversation.get_last_user_message()
         }
     
+    def create_task_for_conversation(
+        self, 
+        conversation_id: str, 
+        conversation_type: ConversationType,
+        task_type: str
+    ) -> str:
+        """
+        Create a new task for a conversation and return task ID
+        
+        Args:
+            conversation_id: Unique conversation identifier
+            conversation_type: Type of conversation
+            task_type: Type of task being created
+            
+        Returns:
+            Generated task ID
+        """
+        # Load or create conversation
+        conversation = self.load_conversation(conversation_id, conversation_type)
+        if conversation is None:
+            conversation = self.create_conversation(conversation_id, conversation_type)
+        
+        # Generate task ID
+        task_id = conversation.generate_next_task_id()
+        
+        # Add to pending tasks
+        conversation.add_pending_task(task_id)
+        
+        # Save conversation
+        self.save_conversation(conversation)
+        
+        logger.info(f"Created task {task_id} for conversation {conversation_id}")
+        return task_id
+    
+    def mark_task_completed(
+        self, 
+        task_id: str, 
+        conversation_id: str, 
+        conversation_type: ConversationType
+    ) -> None:
+        """
+        Mark a task as completed and remove from pending tasks
+        
+        Args:
+            task_id: Task ID to mark as completed
+            conversation_id: Parent conversation ID
+            conversation_type: Type of conversation
+        """
+        conversation = self.load_conversation(conversation_id, conversation_type)
+        if conversation:
+            conversation.remove_pending_task(task_id)
+            self.save_conversation(conversation)
+            logger.info(f"Marked task {task_id} as completed for conversation {conversation_id}")
+    
     def get_buffer_status(self) -> Dict[str, Any]:
         """
         Get current buffer status information
@@ -281,10 +348,12 @@ class ConversationService:
             Dictionary with buffer status information
         """
         if self.storage_mode == "memory":
+            conversations_with_tasks = sum(1 for conv in self.conversations.values() if conv.has_pending_tasks())
             return {
                 "current_conversations": len(self.conversations),
                 "max_conversations": self.max_conversations,
                 "buffer_full": len(self.conversations) >= self.max_conversations,
+                "conversations_with_pending_tasks": conversations_with_tasks,
                 "conversation_keys": list(self.conversations.keys())
             }
         else:

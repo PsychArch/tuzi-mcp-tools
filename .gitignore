@@ -175,4 +175,8 @@ uv.lock
 # API keys and secrets
 .env.local
 .env.production
-.env.development 
+.env.development
+
+# Claude Code specific files
+CLAUDE.md
+CLAUDE.local.md 

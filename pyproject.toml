@@ -36,8 +36,8 @@ dependencies = [
 ]
 
 [project.scripts]
-tuzi = "tuzi_mcp_tools.cli:main"
-tuzi-mcp-tools = "tuzi_mcp_tools.mcp_server:main"
+tuzi = "tuzi_mcp_tools.interfaces.cli:main"
+tuzi-mcp-tools = "tuzi_mcp_tools.interfaces.mcp_server:run_server"
 
 [project.urls]
 Homepage = "https://github.com/example/tuzi-mcp-tools"

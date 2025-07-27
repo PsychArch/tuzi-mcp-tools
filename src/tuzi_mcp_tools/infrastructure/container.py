@@ -157,10 +157,9 @@ class ServiceContainer:
     def get_task_service(self) -> TaskManagementService:
         """Get task management service"""
         if self._task_service is None:
-            max_tasks = int(os.getenv("TUZI_MAX_COMPLETED_TASKS", "100"))
             self._task_service = TaskManagementService(
                 image_service=self.get_image_service(),
-                max_completed_tasks=max_tasks
+                conversation_service=self.get_conversation_service()
             )
         return self._task_service
     

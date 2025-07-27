@@ -4,7 +4,7 @@ Main entry point for the tuzi-mcp-tools package.
 This allows running the MCP server with: python -m tuzi_mcp_tools
 """
 
-from .mcp_server import main
+from .interfaces.mcp_server import run_server
 
 if __name__ == "__main__":
-    main() 
+    run_server() 

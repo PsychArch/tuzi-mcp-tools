@@ -61,6 +61,8 @@ class Conversation:
     messages: List[ConversationMessage] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
+    task_counter: int = field(default=0)  # Counter for generating task IDs
+    pending_task_ids: List[str] = field(default_factory=list)  # Track pending tasks
     
     def add_message(self, role: str, content: str) -> None:
         """Add a message to the conversation"""
@@ -80,6 +82,27 @@ class Conversation:
                 return content[:100] + "..." if len(content) > 100 else content
         return None
     
+    def generate_next_task_id(self) -> str:
+        """Generate next task ID in sequence"""
+        self.task_counter += 1
+        return f"{self.conversation_id}_task_{self.task_counter}"
+    
+    def add_pending_task(self, task_id: str) -> None:
+        """Add a task ID to pending tasks list"""
+        if task_id not in self.pending_task_ids:
+            self.pending_task_ids.append(task_id)
+            self.updated_at = datetime.now()
+    
+    def remove_pending_task(self, task_id: str) -> None:
+        """Remove a task ID from pending tasks list"""
+        if task_id in self.pending_task_ids:
+            self.pending_task_ids.remove(task_id)
+            self.updated_at = datetime.now()
+    
+    def has_pending_tasks(self) -> bool:
+        """Check if conversation has any pending tasks"""
+        return len(self.pending_task_ids) > 0
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
         return {
@@ -87,7 +110,9 @@ class Conversation:
             "conversation_type": self.conversation_type.value,
             "messages": [msg.to_dict() for msg in self.messages],
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat()
+            "updated_at": self.updated_at.isoformat(),
+            "task_counter": self.task_counter,
+            "pending_task_ids": self.pending_task_ids
         }
     
     @classmethod
@@ -98,7 +123,9 @@ class Conversation:
             conversation_type=ConversationType(data["conversation_type"]),
             messages=[ConversationMessage.from_dict(msg) for msg in data.get("messages", [])],
             created_at=datetime.fromisoformat(data.get("created_at", datetime.now().isoformat())),
-            updated_at=datetime.fromisoformat(data.get("updated_at", datetime.now().isoformat()))
+            updated_at=datetime.fromisoformat(data.get("updated_at", datetime.now().isoformat())),
+            task_counter=data.get("task_counter", 0),
+            pending_task_ids=data.get("pending_task_ids", [])
         )
 
 
@@ -195,7 +222,9 @@ class Survey:
 @dataclass
 class AsyncTask:
     """Represents an asynchronous task"""
-    task_id: str
+    task_id: str  # Format: {conversation_id}_task_{task_sequence}
+    conversation_id: str  # Required parent conversation
+    task_sequence: int  # Sequential number within conversation
     task_type: str  # "gpt_image", "flux_image", "survey"
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[Dict[str, Any]] = None
@@ -227,6 +256,8 @@ class AsyncTask:
         """Convert to dictionary for serialization"""
         return {
             "task_id": self.task_id,
+            "conversation_id": self.conversation_id,
+            "task_sequence": self.task_sequence,
             "task_type": self.task_type,
             "status": self.status.value,
             "result": self.result,
