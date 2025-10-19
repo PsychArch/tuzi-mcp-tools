@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tuzi-mcp-tools"
-version = "0.3.0"
-description = "Tuzi - CLI and MCP tool interfaces for Tu-zi.com API"
+version = "0.3.1"
+description = "[ARCHIVED] Tuzi - CLI and MCP tool interfaces for Tu-zi.com API (No longer maintained)"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -13,7 +13,7 @@ authors = [
 ]
 keywords = ["mcp", "cli", "image-generation", "tuzi", "ai"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 7 - Inactive",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -40,10 +40,10 @@ tuzi = "tuzi_mcp_tools.interfaces.cli:main"
 tuzi-mcp-tools = "tuzi_mcp_tools.interfaces.mcp_server:run_server"
 
 [project.urls]
-Homepage = "https://github.com/example/tuzi-mcp-tools"
-Repository = "https://github.com/example/tuzi-mcp-tools"
-Documentation = "https://github.com/example/tuzi-mcp-tools/blob/main/README.md"
-Issues = "https://github.com/example/tuzi-mcp-tools/issues"
+Homepage = "https://github.com/PsychArch/tuzi-mcp-tools"
+Repository = "https://github.com/PsychArch/tuzi-mcp-tools"
+Documentation = "https://github.com/PsychArch/tuzi-mcp-tools/blob/main/README.md"
+Issues = "https://github.com/PsychArch/tuzi-mcp-tools/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tuzi_mcp_tools"]

@@ -1,5 +1,11 @@
 # Tuzi MCP Tools
 
+> **⚠️ 已归档 - 此项目不再维护**
+>
+> 此项目已于 2025 年 10 月归档，不再积极维护。PyPI 包已被撤回，此仓库现为只读状态。
+>
+> 感谢所有使用过此项目的用户。
+
 [![PyPI version](https://badge.fury.io/py/tuzi-mcp-tools.svg)](https://badge.fury.io/py/tuzi-mcp-tools)
 
 [English](README.md) | 简体中文

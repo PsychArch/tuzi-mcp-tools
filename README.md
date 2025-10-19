@@ -1,5 +1,11 @@
 # Tuzi MCP Tools
 
+> **⚠️ ARCHIVED - This project is no longer maintained**
+>
+> This project has been archived as of October 2025 and is no longer actively maintained. The PyPI packages have been yanked and this repository is now read-only.
+>
+> Thank you to everyone who used this project.
+
 [![PyPI version](https://badge.fury.io/py/tuzi-mcp-tools.svg)](https://badge.fury.io/py/tuzi-mcp-tools)
 
 English | [简体中文](README_zh.md)
